@@ -14,10 +14,6 @@ both worsening and recovery transitions. The primary held-out task forecasts a
 planted 6 dpf high-burden state using only the uninterrupted, QC-passing 4–5 dpf
 LFP prefix.
 
-> [!IMPORTANT]
-> Every observation, state, endpoint, and DeepLabCut-like value is synthetic.
-> This benchmark is not evidence of post-traumatic epilepsy, treatment
-> efficacy, or the feasibility of repeated invasive recordings.
 
 ## Benchmark at a glance
 
