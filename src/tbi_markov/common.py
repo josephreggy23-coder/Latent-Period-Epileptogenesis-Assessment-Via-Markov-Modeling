@@ -14,12 +14,18 @@ import pandas as pd
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPOSITORY_ROOT / "data" / "synthetic"
+REAL_DATA_DIR = REPOSITORY_ROOT / "data" / "real"
 RESULTS_DIR = REPOSITORY_ROOT / "results"
+REAL_RESULTS_DIR = REPOSITORY_ROOT / "results_real"
 
 LFP_CSV = DATA_DIR / "tbi_4_6dpf_lfp_timeseries.csv"
 OUTCOMES_CSV = DATA_DIR / "tbi_4_6dpf_fish_outcomes.csv"
 DLC_CSV = DATA_DIR / "tbi_4_6dpf_dlc_behavior.csv"
 WORKBOOK_PATH = DATA_DIR / "TBI_4_6dpf_synthetic_data.xlsx"
+
+REAL_LFP_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_lfp_timeseries.csv"
+REAL_OUTCOMES_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_fish_outcomes.csv"
+REAL_DLC_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_behavior.csv"
 
 SEED = 42
 INJURY_DPF = 3
@@ -65,8 +71,16 @@ def load_dataset(
     lfp_path: Path | str = LFP_CSV,
     outcomes_path: Path | str = OUTCOMES_CSV,
     dlc_path: Path | str = DLC_CSV,
+    *,
+    expect_synthetic: bool = True,
+    require_truth: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load the three normalized tables and enforce deterministic row order."""
+    """Load the three normalized tables and enforce deterministic row order.
+
+    The same reader serves the synthetic benchmark and the real recording; the
+    provenance and planted-truth expectations are the only difference. See
+    ``tbi_markov.real_data.load_real_dataset`` for the real-data entry point.
+    """
     lfp = pd.read_csv(lfp_path)
     outcomes = pd.read_csv(outcomes_path)
     dlc = pd.read_csv(dlc_path)
@@ -74,7 +88,13 @@ def load_dataset(
     lfp = lfp.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
     outcomes = outcomes.sort_values("fish_id").reset_index(drop=True)
     dlc = dlc.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
-    validate_dataset(lfp, outcomes, dlc)
+    validate_dataset(
+        lfp,
+        outcomes,
+        dlc,
+        expect_synthetic=expect_synthetic,
+        require_truth=require_truth,
+    )
     return lfp, outcomes, dlc
 
 
@@ -82,8 +102,21 @@ def validate_dataset(
     lfp: pd.DataFrame,
     outcomes: pd.DataFrame,
     dlc: pd.DataFrame,
+    *,
+    expect_synthetic: bool = True,
+    require_truth: bool = True,
 ) -> None:
-    """Reject schema violations that would invalidate the benchmark."""
+    """Reject schema violations that would invalidate the benchmark.
+
+    ``expect_synthetic`` asserts the direction of the ``is_synthetic`` provenance
+    flag: the synthetic benchmark requires it True on every row, while a real
+    recording must be marked False on every row. The flag is always required and
+    always checked, so synthetic and measured data can never be silently mixed.
+
+    ``require_truth`` demands the planted ``hidden_state_TRUTH`` column. Real
+    animals have no planted latent state, so real datasets are loaded with
+    ``require_truth=False`` and simply cannot be scored for state recovery.
+    """
     required_lfp = {
         "fish_id",
         "group",
@@ -93,10 +126,12 @@ def validate_dataset(
         "electrode_shift_pct",
         "rms_noise_mv",
         "qc_pass",
+        "is_synthetic",
         DOSE_INDEX,
-        TRUTH_STATE,
         *FEATURES,
     }
+    if require_truth:
+        required_lfp.add(TRUTH_STATE)
     required_outcomes = {
         "fish_id",
         "group",
@@ -123,17 +158,18 @@ def validate_dataset(
     if set(lfp["dpf"].unique()) - set(OBSERVATION_DPF):
         raise ValueError("LFP table contains observations outside 4-6 dpf.")
     if not (lfp["tbi_dpf"] == INJURY_DPF).all():
-        raise ValueError("Every row must identify the synthetic insult at 3 dpf.")
+        raise ValueError("Every row must identify the insult at 3 dpf.")
     if lfp.duplicated(["fish_id", "dpf"]).any():
         raise ValueError("Duplicate fish_id/dpf observations are not allowed.")
     if not set(lfp["group"]).issubset(GROUPS):
         raise ValueError("Unexpected experimental arm.")
-    if not lfp["is_synthetic"].astype(bool).all():
-        raise ValueError("Every LFP row must remain explicitly marked synthetic.")
-    if not outcomes["is_synthetic"].astype(bool).all():
-        raise ValueError("Every outcome row must remain explicitly marked synthetic.")
-    if not dlc["is_synthetic"].astype(bool).all():
-        raise ValueError("Every behavior row must remain explicitly marked synthetic.")
+    provenance = "synthetic" if expect_synthetic else "real (is_synthetic=False)"
+    for name, frame in (("LFP", lfp), ("outcome", outcomes), ("behavior", dlc)):
+        flags = frame["is_synthetic"].astype(bool)
+        if bool(flags.all()) is not expect_synthetic or bool(flags.any()) is not expect_synthetic:
+            raise ValueError(
+                f"Every {name} row must remain explicitly marked {provenance}."
+            )
 
     numeric = lfp[list(FEATURES)].to_numpy(dtype=float)
     if not np.isfinite(numeric).all():

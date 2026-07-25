@@ -17,6 +17,22 @@ Run the complete workflow with:
 python -m tbi_markov
 ```
 
+## Real-recording run
+
+The real analysis uses the same seed, split fraction, candidate state counts,
+CV folds, and bootstrap count as the synthetic benchmark:
+
+```bash
+tbi-real
+```
+
+It rewrites `data/real/` from the source workbooks and writes `results_real/`.
+Because the real cohort has no planted latent state, the run produces
+`state_recovery: null` and omits the confusion-matrix figure; every other output
+has the same shape as the synthetic run. The source workbooks are the only
+non-regenerable input — if they are absent, the real-data tests skip rather than
+fail.
+
 ## Output contract
 
 The pipeline writes:

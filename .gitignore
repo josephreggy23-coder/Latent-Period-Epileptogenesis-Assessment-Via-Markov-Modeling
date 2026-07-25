@@ -14,7 +14,9 @@ htmlcov/
 # OS / editor
 .DS_Store
 Thumbs.db
-~$*            # Excel lock files
+# Excel lock files (.gitignore has no inline comments - the pattern must be alone
+# on its line, or the trailing text becomes part of the pattern and never matches)
+~$*
 *.tmp
 *.inspect.ndjson
 .idea/

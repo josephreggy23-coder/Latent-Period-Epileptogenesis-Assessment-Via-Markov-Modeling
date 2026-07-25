@@ -2,14 +2,20 @@
 
 ## Scope
 
-This project is a synthetic benchmark joining three methodological interfaces:
+This project joins three methodological interfaces:
 
 1. a larval-zebrafish syringe-blast TBI insult;
 2. forebrain LFP acquisition and statistical pattern summaries;
 3. markerless pose-derived behavioral validation.
 
-The source papers do not contain the row-level data committed here and do not
-report repeated same-fish LFP at 4–6 dpf after 3 dpf TBI.
+It comprises a **synthetic benchmark** with a planted latent state and a
+**real-recording analysis path** that reuses the identical model. The two data
+sources are kept strictly separate by an `is_synthetic` flag asserted in both
+directions at load time. See [Real recording](#real-recording) for what changes
+when the ground truth is no longer planted.
+
+The source papers do not contain the row-level synthetic data committed here and
+do not report repeated same-fish LFP at 4–6 dpf after 3 dpf TBI.
 
 ## Synthetic cohort
 
@@ -99,6 +105,62 @@ Held-out evaluation includes:
 For the forecast, the final filtered distribution from the available 4–5 dpf
 prefix is propagated one or two steps through the learned ordered microstate
 transition matrix. No 6 dpf LFP or behavior enters the forecast.
+
+## Real recording
+
+A measured 240-fish weight-drop TBI cohort follows the same design as the
+simulator — insult at 3 dpf, single forebrain electrode, LFP at 4/5/6 dpf, sham
+plus `tbi_low`/`tbi_moderate`/`tbi_high` — and supplies all seven HMM features.
+It is normalized into the identical three tables and analyzed by the **same**
+model, preprocessing, prefix rule, split, and propagation. Nothing in the
+modeling path is specialized for it.
+
+### Ingestion
+
+`tbi_markov.real_data.build_real_tables` reads the source workbooks and emits
+the LFP, outcome, and behavior tables. The published QC rule
+(`electrode_shift_pct ≤ 50` and `rms_noise_mv < 0.2`) is checked against the
+recorded `qc_pass` flag and must reproduce it exactly; disagreement is a hard
+error, because the two would otherwise disagree about which sessions are usable.
+In this cohort all 706 sessions pass, and every fish has a contiguous prefix
+beginning at 4 dpf.
+
+### Endpoint
+
+The 6 dpf high-burden endpoint is behavioral: positive iff the blinded scorer
+logged at least one qualifying event (Baraban stage ≥ 2 with passing pose QC) in
+the 6 dpf session. It is computed only from the Event Log and shares no variable
+with the LFP feature matrix, so the forecast target remains independent of the
+model's inputs. The column keeps the `high_burden_state_dpf6_TRUTH` name for
+schema compatibility but is an observation, not planted truth.
+
+### Behavioral aggregation
+
+The Event Log is per-event; sessions with no scored event do not appear in it.
+Those sessions are materialized with zero event rates rather than dropped —
+"no scored behavior" is an observation, and omitting them would restrict the
+behavioral validation to the abnormal subset. The abnormality index is built
+only from event-rate and stage terms, which remain defined at zero events; each
+term is divided by a label-free upper quantile of its own distribution so the
+terms are commensurate, and the endpoint is never consulted. Kinematic columns
+(speed, tail angle) are reported but deliberately excluded from the index,
+because they are undefined without an event and imputing them would manufacture
+signal.
+
+### What cannot be claimed
+
+Real animals carry no planted latent state, so `state_recovery` is `None` and
+the confusion-matrix figure is skipped. The synthetic benchmark's balanced
+accuracy has no real-data counterpart, and no proxy is substituted. The latent
+states are therefore validated only indirectly: through the forward 6 dpf
+forecast and the association with the independent behavioral channel.
+
+Discrimination and calibration are reported separately. The propagated quantity
+is the probability of occupying the top *LFP* macrostate while the endpoint is a
+*behavioral* event, so the score can rank well (AUC 0.830) yet sit far below the
+fixed 0.5 threshold. The metrics record the observed positive rate alongside the
+mean, median, and maximum forecast risk and the count above threshold, so a low
+sensitivity is not mistaken for a ranking failure.
 
 ## References
 

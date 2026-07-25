@@ -1,0 +1,272 @@
+{
+  "benchmark_type": "real_measured",
+  "seed": 42,
+  "split": {
+    "n_train_fish": 168,
+    "n_test_fish": 72,
+    "fish_overlap": 0
+  },
+  "dataset_qc": {
+    "n_fish": 240,
+    "n_lfp_sessions": 706,
+    "n_qc_pass_sessions": 706,
+    "qc_pass_rate": 1.0,
+    "n_contiguous_model_sessions": 706,
+    "n_model_fish_with_4dpf_baseline": 240,
+    "sequence_rule": "Use the uninterrupted QC-passing prefix beginning at 4 dpf; truncate at the first gap and exclude fish missing 4 dpf.",
+    "survival_by_group": {
+      "sham": 0.9666666666666667,
+      "tbi_high": 0.9833333333333333,
+      "tbi_low": 0.95,
+      "tbi_moderate": 0.9
+    }
+  },
+  "selected_states": 4,
+  "model_selection": {
+    "2": {
+      "bic": 2954.443364507795,
+      "train_log_likelihood": -1381.113790056236,
+      "cv_log_likelihood_per_session": -2.856301790719612,
+      "cv_standard_deviation": 0.24710462865939029,
+      "cv_standard_error": 0.1426659238745015,
+      "fold_log_likelihoods": [
+        -2.5938414858762853,
+        -3.084468204628173,
+        -2.890595681654378
+      ],
+      "n_parameters": 31
+    },
+    "3": {
+      "bic": 2468.687992208163,
+      "train_log_likelihood": -1079.3312667530142,
+      "cv_log_likelihood_per_session": -2.2508461361817225,
+      "cv_standard_deviation": 0.43569173077510803,
+      "cv_standard_error": 0.2515467380467026,
+      "fold_log_likelihoods": [
+        -1.9872983866199116,
+        -2.753745625871499,
+        -2.0114943960537555
+      ],
+      "n_parameters": 50
+    },
+    "4": {
+      "bic": 1782.6261804453516,
+      "train_log_likelihood": -671.1950145441604,
+      "cv_log_likelihood_per_session": -1.5567849962702434,
+      "cv_standard_deviation": 0.39416624057647914,
+      "cv_standard_error": 0.22757198510229304,
+      "fold_log_likelihoods": [
+        -1.1902713071600632,
+        -1.973746380749849,
+        -1.5063373009008172
+      ],
+      "n_parameters": 71
+    }
+  },
+  "severity_alignment": {
+    "raw_to_severity": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "severity_to_raw": [
+      1,
+      2,
+      3,
+      0
+    ],
+    "prespecified_score_by_raw_state": [
+      2.4608561526173283,
+      -0.9672551985967113,
+      0.22070383356159592,
+      1.2530309706209941
+    ],
+    "microstate_to_macrostate": [
+      0,
+      1,
+      1,
+      2
+    ],
+    "macrostate_collapse_rule": "Adjacent severity-ordered components are split at the two largest prespecified-score gaps; truth labels are not used."
+  },
+  "state_recovery": null,
+  "early_prediction": {
+    "prediction_cutoff_dpf": 5,
+    "target_dpf": 6,
+    "forecast_method": "Causal filtered probability at the last contiguous QC-passing 4-5 dpf observation, propagated to 6 dpf with the learned ordered microstate transition matrix.",
+    "n_test_fish": 72,
+    "n_positive": 18,
+    "roc_auc": 0.8302469135802469,
+    "average_precision": 0.5535660455118155,
+    "brier_score": 0.1823516919124066,
+    "threshold": 0.5,
+    "sensitivity": 0.1111111111111111,
+    "specificity": 0.9814814814814815,
+    "confusion": {
+      "true_positive": 2,
+      "true_negative": 53,
+      "false_positive": 1,
+      "false_negative": 16
+    },
+    "roc_auc_95ci": [
+      0.7319607843137256,
+      0.9112316441728207
+    ],
+    "average_precision_95ci": [
+      0.37761668369674434,
+      0.7860329978515074
+    ],
+    "calibration": {
+      "observed_positive_rate": 0.25,
+      "mean_forecast_risk": 0.10176874904526906,
+      "median_forecast_risk": 0.029002679437555103,
+      "max_forecast_risk": 0.7073736217487065,
+      "n_above_threshold": 3
+    }
+  },
+  "dynamics": {
+    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.6719967997868335,
+    "dose_index_vs_dpf6_forecast_risk_p": 1.0289599814597381e-10,
+    "group_transition_summary": [
+      {
+        "group": "sham",
+        "n_transitions": 35,
+        "worsening_fraction": 0.05714285714285714,
+        "recovery_fraction": 0.0,
+        "stable_fraction": 0.9428571428571428
+      },
+      {
+        "group": "tbi_low",
+        "n_transitions": 36,
+        "worsening_fraction": 0.25,
+        "recovery_fraction": 0.0,
+        "stable_fraction": 0.75
+      },
+      {
+        "group": "tbi_moderate",
+        "n_transitions": 35,
+        "worsening_fraction": 0.17142857142857143,
+        "recovery_fraction": 0.0,
+        "stable_fraction": 0.8285714285714286
+      },
+      {
+        "group": "tbi_high",
+        "n_transitions": 35,
+        "worsening_fraction": 0.2571428571428571,
+        "recovery_fraction": 0.05714285714285714,
+        "stable_fraction": 0.6857142857142857
+      }
+    ]
+  },
+  "behavior_validation": {
+    "n_fish": 67,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.4753231829731614,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 4.810406521869157e-05,
+    "dose_batch_adjusted_partial_spearman_rho": 0.2262535545887144,
+    "dose_batch_adjusted_partial_spearman_p": 0.06561183490945359,
+    "note": "Behavioural values are blinded manual Baraban scores and pose-derived kinematics from the real Event Log, aggregated per session. Zero-event sessions are retained as observations."
+  },
+  "ordered_start_probabilities": [
+    0.4738524029305161,
+    0.33617036742800654,
+    0.12083650960672823,
+    0.06914072003474908
+  ],
+  "ordered_transition_matrix": [
+    [
+      0.8200576021891461,
+      0.16790457222781693,
+      0.009914977854006328,
+      0.0021228477290307197
+    ],
+    [
+      0.01673488154806551,
+      0.4904708126171395,
+      0.4637913182649835,
+      0.02900298756981159
+    ],
+    [
+      0.005484780342234951,
+      0.2668757872793061,
+      0.49056006549387304,
+      0.23707936688458592
+    ],
+    [
+      0.008418464489369388,
+      0.06394029152363605,
+      0.22026762016818419,
+      0.7073736238188103
+    ]
+  ],
+  "ordered_emission_means_robust_scaled": [
+    [
+      -0.5114821797052317,
+      -0.5303476123600582,
+      -0.5093473682402407,
+      -0.5377707459002542,
+      -0.5243270554225508,
+      3.566596063815342e-262,
+      0.5317093716586554
+    ],
+    [
+      0.10528799902599409,
+      0.003951403712376499,
+      0.11965758702343844,
+      0.14120500806968458,
+      0.06527535265771452,
+      3.304215909469322e-259,
+      -0.14814094181339457
+    ],
+    [
+      0.5712258133418263,
+      0.5881170315094356,
+      0.4981035793180902,
+      0.6447890186229307,
+      0.6427275864167371,
+      0.7883740417454721,
+      -0.6308081254619121
+    ],
+    [
+      1.214947383671616,
+      1.1160472304189695,
+      1.2462552239591356,
+      1.122866175800611,
+      1.1880523545916366,
+      1.4551293657894946,
+      -1.2369731969120847
+    ]
+  ],
+  "features": [
+    "lfp_mean_uv",
+    "lfp_variance_uv2",
+    "lfp_skewness",
+    "lfp_kurtosis",
+    "lfp_fourth_power_mean_uv4",
+    "lfp_seizure_event_rate_per_h",
+    "lfp_ica_complexity"
+  ],
+  "preprocessing": {
+    "fit_partition": "training fish only",
+    "transform": "log1p variance, kurtosis, fourth-power mean, and event rate; then median/IQR scaling",
+    "center": [
+      4.6839,
+      6.674416558094205,
+      0.5037,
+      1.791742802422498,
+      14.775610802865083,
+      0.0,
+      0.7012
+    ],
+    "scale_iqr": [
+      5.0687999999999995,
+      0.9469257988728286,
+      0.6446000000000001,
+      0.44225394425855025,
+      2.345374168501108,
+      1.0,
+      0.28559999999999997
+    ]
+  },
+  "critical_caveat": "Real measured recording. No planted latent state exists, so state-recovery accuracy is unmeasurable; only the causal 4-5 dpf to 6 dpf behavioural forecast is scored."
+}

@@ -10,7 +10,7 @@ import argparse
 import json
 import math
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import matplotlib
 
@@ -299,6 +299,7 @@ def score_test_sessions(
             ]
         )
         states = micro_to_macro[microstates]
+        has_truth = TRUTH_STATE in frame.columns
         for row_index, (_, source) in enumerate(frame.iterrows()):
             record = {
                 "fish_id": fish_id,
@@ -308,13 +309,14 @@ def score_test_sessions(
                     source["measured_peak_pressure_kpa"]
                 ),
                 DOSE_INDEX: float(source[DOSE_INDEX]),
-                "hidden_state_TRUTH": int(source[TRUTH_STATE]),
                 "predicted_microstate": int(microstates[row_index]),
                 "predicted_state": int(states[row_index]),
                 "expected_state": float(
                     macro_probabilities[row_index] @ np.arange(3)
                 ),
             }
+            if has_truth:
+                record[TRUTH_STATE] = int(source[TRUTH_STATE])
             for state in range(model.n_components):
                 record[f"p_microstate_{state}"] = float(
                     micro_probabilities[row_index, state]
@@ -327,8 +329,16 @@ def score_test_sessions(
     return pd.DataFrame(rows).sort_values(["fish_id", "dpf"]).reset_index(drop=True)
 
 
-def state_recovery_metrics(scored_sessions: pd.DataFrame) -> dict:
-    truth = scored_sessions["hidden_state_TRUTH"].to_numpy(int)
+def state_recovery_metrics(scored_sessions: pd.DataFrame) -> dict | None:
+    """Score inferred macrostates against the planted latent state.
+
+    Returns ``None`` when no planted truth is present. Real recordings have no
+    ground-truth latent state, so state recovery is genuinely unmeasurable there
+    rather than merely unreported - callers must not substitute a proxy.
+    """
+    if TRUTH_STATE not in scored_sessions.columns:
+        return None
+    truth = scored_sessions[TRUTH_STATE].to_numpy(int)
     predicted = scored_sessions["predicted_state"].to_numpy(int)
     labels = sorted(set(truth) | set(predicted))
     matrix = confusion_matrix(truth, predicted, labels=labels)
@@ -478,6 +488,18 @@ def early_prediction(
             float(np.percentile(ap_boot, 2.5)),
             float(np.percentile(ap_boot, 97.5)),
         ],
+        # Discrimination (AUC) and calibration are separate properties. The
+        # propagated state probability is an LFP-derived quantity scored against
+        # a different endpoint, so it can rank fish well while sitting far below
+        # the 0.5 decision threshold. Recording the comparison keeps a low
+        # sensitivity from being read as a ranking failure.
+        "calibration": {
+            "observed_positive_rate": float(y.mean()),
+            "mean_forecast_risk": float(score.mean()),
+            "median_forecast_risk": float(np.median(score)),
+            "max_forecast_risk": float(score.max()),
+            "n_above_threshold": int((score >= threshold).sum()),
+        },
     }
     return metrics, predictions
 
@@ -541,11 +563,20 @@ def dynamics_metrics(
 def behavior_validation(
     early_predictions: pd.DataFrame,
     dlc: pd.DataFrame,
+    note: str | None = None,
 ) -> tuple[dict, pd.DataFrame]:
     behavior = dlc.loc[
         (dlc["dpf"] == TARGET_DPF)
         & dlc["dlc_tracking_qc_pass"].astype(bool)
     ].copy()
+    # The manual stage column is planted truth in the simulator but a blinded
+    # human Baraban score on real recordings, so it is matched by presence
+    # rather than assumed. It is carried through for inspection, not scored.
+    stage_columns = [
+        column
+        for column in ("manual_pts_stage_TRUTH", "manual_pts_stage_observed")
+        if column in behavior.columns
+    ]
     merged = early_predictions.merge(
         behavior[
             [
@@ -554,7 +585,7 @@ def behavior_validation(
                 "dlc_mean_speed_mm_s",
                 "dlc_rest_fraction",
                 "dlc_whirlpool_rate_per_min",
-                "manual_pts_stage_TRUTH",
+                *stage_columns,
             ]
         ],
         on="fish_id",
@@ -588,7 +619,7 @@ def behavior_validation(
         "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": float(p_value),
         "dose_batch_adjusted_partial_spearman_rho": float(partial_rho),
         "dose_batch_adjusted_partial_spearman_p": float(partial_p),
-        "note": (
+        "note": note or (
             "DeepLabCut-like values are simulated validation data; severe-dose "
             "locomotor speed is intentionally non-monotonic."
         ),
@@ -615,13 +646,24 @@ def _json_ready(value):
 def make_figures(
     output_dir: Path,
     selection: dict[int, dict],
-    recovery: dict,
+    recovery: dict | None,
     early: dict,
     early_predictions: pd.DataFrame,
     occupancy: pd.DataFrame,
     behavior: pd.DataFrame,
     transition_matrix: np.ndarray,
+    data_label: str = "Synthetic",
+    endpoint_label: str = "planted endpoint",
+    behavior_label: str = "Synthetic DLC",
+    behavior_suptitle: str = "DeepLabCut-style validation (synthetic only)",
+    speed_panel_title: str = "Speed is intentionally non-monotonic",
 ) -> None:
+    """Render the diagnostic figures.
+
+    Captions are parameterized because the identical figures are produced for
+    the synthetic benchmark and for real recordings; labelling a measured result
+    "synthetic"/"planted" (or the reverse) would be a provenance bug.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     states = sorted(selection)
 
@@ -645,21 +687,24 @@ def make_figures(
     fig.savefig(output_dir / "tbi_model_selection.png", dpi=160)
     plt.close(fig)
 
-    matrix = np.asarray(recovery["confusion_matrix"])
-    fig, axis = plt.subplots(figsize=(5.2, 4.6))
-    image = axis.imshow(matrix, cmap="Blues")
-    for row in range(matrix.shape[0]):
-        for column in range(matrix.shape[1]):
-            axis.text(column, row, str(matrix[row, column]), ha="center", va="center")
-    axis.set_xlabel("Predicted severity state")
-    axis.set_ylabel("Planted state (validation only)")
-    axis.set_xticks(range(len(recovery["labels"])), recovery["labels"])
-    axis.set_yticks(range(len(recovery["labels"])), recovery["labels"])
-    axis.set_title("Held-out state recovery")
-    fig.colorbar(image, ax=axis, shrink=0.8)
-    fig.tight_layout()
-    fig.savefig(output_dir / "tbi_state_confusion.png", dpi=160)
-    plt.close(fig)
+    # Real recordings carry no planted latent state, so there is no confusion
+    # matrix to draw - the figure is skipped rather than faked with a proxy.
+    if recovery is not None:
+        matrix = np.asarray(recovery["confusion_matrix"])
+        fig, axis = plt.subplots(figsize=(5.2, 4.6))
+        image = axis.imshow(matrix, cmap="Blues")
+        for row in range(matrix.shape[0]):
+            for column in range(matrix.shape[1]):
+                axis.text(column, row, str(matrix[row, column]), ha="center", va="center")
+        axis.set_xlabel("Predicted severity state")
+        axis.set_ylabel("Planted state (validation only)")
+        axis.set_xticks(range(len(recovery["labels"])), recovery["labels"])
+        axis.set_yticks(range(len(recovery["labels"])), recovery["labels"])
+        axis.set_title("Held-out state recovery")
+        fig.colorbar(image, ax=axis, shrink=0.8)
+        fig.tight_layout()
+        fig.savefig(output_dir / "tbi_state_confusion.png", dpi=160)
+        plt.close(fig)
 
     y = early_predictions[TARGET].to_numpy(int)
     risk = early_predictions["forecast_risk_dpf6"].to_numpy(float)
@@ -669,7 +714,7 @@ def make_figures(
     axis.plot([0, 1], [0, 1], "--", color="#64748B")
     axis.set_xlabel("False-positive rate")
     axis.set_ylabel("True-positive rate")
-    axis.set_title("4-5 dpf LFP → 6 dpf planted endpoint")
+    axis.set_title(f"4-5 dpf LFP → 6 dpf {endpoint_label}")
     axis.legend(loc="lower right")
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_early_prediction_roc.png", dpi=160)
@@ -687,7 +732,7 @@ def make_figures(
     axis.set_xticks(OBSERVATION_DPF)
     axis.set_xlabel("dpf")
     axis.set_ylabel("Mean filtered expected state (held-out fish)")
-    axis.set_title("Synthetic post-TBI electrophysiology trajectories")
+    axis.set_title(f"{data_label} post-TBI electrophysiology trajectories")
     axis.legend(frameon=False, ncol=2)
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_state_trajectories.png", dpi=160)
@@ -729,12 +774,12 @@ def make_figures(
             alpha=0.72,
         )
     axes[0].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[0].set_ylabel("Synthetic DLC abnormality index at DPF6")
+    axes[0].set_ylabel(f"{behavior_label} abnormality index at DPF6")
     axes[0].legend(frameon=False, fontsize=8)
     axes[1].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[1].set_ylabel("Synthetic DLC mean speed at DPF6 (mm/s)")
-    axes[1].set_title("Speed is intentionally non-monotonic")
-    fig.suptitle("DeepLabCut-style validation (synthetic only)")
+    axes[1].set_ylabel(f"{behavior_label} mean speed at DPF6 (mm/s)")
+    axes[1].set_title(speed_panel_title)
+    fig.suptitle(behavior_suptitle)
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_dlc_validation.png", dpi=160)
     plt.close(fig)
@@ -831,7 +876,19 @@ def run_analysis(
     restarts: int = 3,
     cv_folds: int = 3,
     bootstrap_iterations: int = 1_000,
+    benchmark_type: str = "synthetic_only",
+    critical_caveat: str | None = None,
+    behavior_note: str | None = None,
+    figure_labels: dict[str, str] | None = None,
+    report_writer: Callable[[dict, Path], None] | None = None,
 ) -> dict:
+    """Fit, score, and report the Markov analysis.
+
+    The same routine serves the synthetic benchmark and a real recording. On
+    real data ``state_recovery`` comes back ``None`` (no planted latent state
+    exists), so callers supply ``benchmark_type``/``critical_caveat`` describing
+    the provenance and a ``report_writer`` that does not narrate planted truth.
+    """
     output_dir = Path(output_dir)
     figures_dir = output_dir / "figures"
     tables_dir = output_dir / "tables"
@@ -887,10 +944,12 @@ def run_analysis(
     dynamics, occupancy, group_transitions = dynamics_metrics(
         scored_sessions, early_predictions
     )
-    behavior, behavior_frame = behavior_validation(early_predictions, dlc)
+    behavior, behavior_frame = behavior_validation(
+        early_predictions, dlc, behavior_note
+    )
 
     metrics = {
-        "benchmark_type": "synthetic_only",
+        "benchmark_type": benchmark_type,
         "seed": seed,
         "split": {
             "n_train_fish": len(train_ids),
@@ -943,7 +1002,7 @@ def run_analysis(
             "center": center.tolist(),
             "scale_iqr": scale.tolist(),
         },
-        "critical_caveat": (
+        "critical_caveat": critical_caveat or (
             "All data and endpoints are synthetic. Daily repeated 4-6 dpf LFP "
             "after 3 dpf TBI is a hypothetical benchmark protocol."
         ),
@@ -966,7 +1025,7 @@ def run_analysis(
         json.dumps(_json_ready(metrics), indent=2) + "\n",
         encoding="utf-8",
     )
-    write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md")
+    (report_writer or write_report)(metrics, output_dir / "TBI_MODEL_RESULTS.md")
     make_figures(
         figures_dir,
         selection,
@@ -976,6 +1035,7 @@ def run_analysis(
         occupancy,
         behavior_frame,
         transition_matrix,
+        **(figure_labels or {}),
     )
     return metrics
 

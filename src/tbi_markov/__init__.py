@@ -1,6 +1,6 @@
-"""Synthetic larval-zebrafish TBI Markov-modeling benchmark."""
+"""Larval-zebrafish TBI Markov modeling: synthetic benchmark plus real-data analysis."""
 
 from .hmm import DiagonalGaussianHMM
 
 __all__ = ["DiagonalGaussianHMM"]
-__version__ = "1.0.0"
+__version__ = "1.1.0"
