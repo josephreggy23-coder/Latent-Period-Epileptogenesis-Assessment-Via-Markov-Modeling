@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/readme-banner.svg" alt="Latent-period epileptogenesis assessment via Markov state modeling" width="100%">
-</p>
-
 <h1 align="center">Latent-Period Epileptogenesis Assessment</h1>
 
 <p align="center">
