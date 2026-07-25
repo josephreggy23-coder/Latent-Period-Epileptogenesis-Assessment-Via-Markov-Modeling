@@ -1,5 +1,4 @@
 {
-  "is_synthetic": false,
   "n_fish": 240,
   "n_lfp_sessions": 706,
   "n_behavior_sessions": 706,
@@ -15,7 +14,7 @@
     "tbi_high": 60
   },
   "endpoint": {
-    "name": "high_burden_state_dpf6_TRUTH",
+    "name": "high_burden_state_dpf6",
     "definition": "At least one qualifying blinded behavioural event (Baraban stage >= 2 with passing pose QC) in the 6 dpf session.",
     "n_positive": 60,
     "n_negative": 173,
@@ -42,6 +41,5 @@
     "lfp_fourth_power_mean_uv4",
     "lfp_seizure_event_rate_per_h",
     "lfp_ica_complexity"
-  ],
-  "planted_truth_available": false
+  ]
 }

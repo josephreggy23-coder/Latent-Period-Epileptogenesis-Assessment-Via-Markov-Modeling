@@ -18,11 +18,11 @@ from tbi_markov.modeling import (
     propagate_ordered_probabilities,
     run_analysis,
 )
-from tbi_markov.synthetic import generate_dataset
+from conftest import make_tables
 
 
 def test_fish_split_has_no_overlap_and_preserves_arms():
-    lfp, outcomes, _, _ = generate_dataset(seed=42, n_per_arm=20)
+    lfp, outcomes, _ = make_tables(n_per_arm=8, seed=42)
     train_ids, test_ids, assignments = fish_level_split(outcomes, seed=42)
     assert not train_ids & test_ids
     assert train_ids | test_ids == set(outcomes["fish_id"])
@@ -33,7 +33,7 @@ def test_fish_split_has_no_overlap_and_preserves_arms():
 
 
 def test_prefix_builder_excludes_dpf6():
-    lfp, outcomes, _, _ = generate_dataset(seed=44, n_per_arm=20)
+    lfp, outcomes, _ = make_tables(n_per_arm=8, seed=44)
     lfp = qc_sessions(lfp)
     train_ids, test_ids, _ = fish_level_split(outcomes, seed=44)
     center, scale = fit_robust_scaler(lfp, train_ids)
@@ -52,7 +52,7 @@ def test_prefix_builder_excludes_dpf6():
 
 
 def test_qc_gap_truncates_prefix_and_missing_baseline_excludes_fish():
-    lfp, outcomes, _, _ = generate_dataset(seed=45, n_per_arm=20)
+    lfp, outcomes, _ = make_tables(n_per_arm=8, seed=45)
     lfp = qc_sessions(lfp)
     complete_ids = [
         fish_id
@@ -95,11 +95,11 @@ def test_macrostate_collapse_uses_ordered_score_gaps():
 
 
 def test_end_to_end_smoke(tmp_path):
-    lfp, outcomes, dlc, _ = generate_dataset(seed=51, n_per_arm=20)
+    lfp, outcomes, behavior = make_tables(n_per_arm=10, seed=51)
     metrics = run_analysis(
         lfp,
         outcomes,
-        dlc,
+        behavior,
         output_dir=tmp_path,
         seed=51,
         candidates=(3,),
@@ -129,5 +129,5 @@ def test_end_to_end_smoke(tmp_path):
         predictions["filtered_high_state_probability_last_observation"],
     )
     written = json.loads((tmp_path / "tbi_model_metrics.json").read_text())
-    assert written["critical_caveat"].startswith("All data")
+    assert "pilot" in written["critical_caveat"]
     assert TARGET not in written["features"]

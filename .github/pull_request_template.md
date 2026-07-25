@@ -11,7 +11,7 @@ Describe the scientific or software change and why it is needed.
 
 ## Scientific integrity
 
-- [ ] Synthetic values remain clearly labeled
-- [ ] HMM features exclude truth, dose, group, QC, and behavior columns
+- [ ] HMM features exclude the endpoint, dose, group, QC, and behavior columns
 - [ ] Fish-level splitting and train-only preprocessing are preserved
-- [ ] Claims do not imply experimental efficacy or disease prediction
+- [ ] Unobserved fish keep an `NA` endpoint and are not scored as negatives
+- [ ] Claims stay within a retrospective single-cohort analysis

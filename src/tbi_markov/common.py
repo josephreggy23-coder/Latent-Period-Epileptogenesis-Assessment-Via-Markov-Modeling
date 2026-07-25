@@ -1,8 +1,8 @@
-"""Shared schema, loading, and sequence utilities for the synthetic TBI model.
+"""Shared schema, loading, and sequence utilities for the TBI LFP model.
 
-The LFP feature matrix is intentionally kept separate from injury metadata,
-DeepLabCut-derived behavior, and planted simulator truth.  The latter fields
-exist only for quality control and benchmark scoring.
+The LFP feature matrix is kept strictly separate from injury metadata,
+pose-derived behavior, and outcome fields. The latter exist only for quality
+control and scoring, and never enter the model.
 """
 from __future__ import annotations
 
@@ -13,19 +13,13 @@ import numpy as np
 import pandas as pd
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = REPOSITORY_ROOT / "data" / "synthetic"
-REAL_DATA_DIR = REPOSITORY_ROOT / "data" / "real"
+DATA_DIR = REPOSITORY_ROOT / "data" / "measured"
 RESULTS_DIR = REPOSITORY_ROOT / "results"
-REAL_RESULTS_DIR = REPOSITORY_ROOT / "results_real"
 
 LFP_CSV = DATA_DIR / "tbi_4_6dpf_lfp_timeseries.csv"
 OUTCOMES_CSV = DATA_DIR / "tbi_4_6dpf_fish_outcomes.csv"
-DLC_CSV = DATA_DIR / "tbi_4_6dpf_dlc_behavior.csv"
-WORKBOOK_PATH = DATA_DIR / "TBI_4_6dpf_synthetic_data.xlsx"
-
-REAL_LFP_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_lfp_timeseries.csv"
-REAL_OUTCOMES_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_fish_outcomes.csv"
-REAL_DLC_CSV = REAL_DATA_DIR / "tbi_4_6dpf_real_behavior.csv"
+BEHAVIOR_CSV = DATA_DIR / "tbi_4_6dpf_behavior.csv"
+MANIFEST_JSON = DATA_DIR / "tbi_4_6dpf_manifest.json"
 
 SEED = 42
 INJURY_DPF = 3
@@ -35,8 +29,8 @@ PREDICTION_CUTOFF_DPF = 5
 GROUPS = ("sham", "tbi_low", "tbi_moderate", "tbi_high")
 GROUP_ORDER = {group: index for index, group in enumerate(GROUPS)}
 
-# Eimon-inspired session summaries.  No protocol, dose, group, behavior, or
-# planted-truth field is allowed into the HMM feature matrix.
+# Eimon-inspired session summaries. No protocol, dose, group, behavior, or
+# outcome field is allowed into the HMM feature matrix.
 FEATURES = (
     "lfp_mean_uv",
     "lfp_variance_uv2",
@@ -62,61 +56,35 @@ LOG1P_FEATURES = (
     "lfp_seizure_event_rate_per_h",
 )
 
-TRUTH_STATE = "hidden_state_TRUTH"
-TARGET = "high_burden_state_dpf6_TRUTH"
+# Behavioral 6 dpf endpoint. Three-valued: 1 qualifying event, 0 observed
+# without one, NA never observed. See tbi_markov.dataset.
+TARGET = "high_burden_state_dpf6"
 DOSE_INDEX = "cumulative_pressure_burden_kpa_hits"
 
 
 def load_dataset(
     lfp_path: Path | str = LFP_CSV,
     outcomes_path: Path | str = OUTCOMES_CSV,
-    dlc_path: Path | str = DLC_CSV,
-    *,
-    expect_synthetic: bool = True,
-    require_truth: bool = True,
+    behavior_path: Path | str = BEHAVIOR_CSV,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Load the three normalized tables and enforce deterministic row order.
-
-    The same reader serves the synthetic benchmark and the real recording; the
-    provenance and planted-truth expectations are the only difference. See
-    ``tbi_markov.real_data.load_real_dataset`` for the real-data entry point.
-    """
+    """Load the three normalized tables and enforce deterministic row order."""
     lfp = pd.read_csv(lfp_path)
     outcomes = pd.read_csv(outcomes_path)
-    dlc = pd.read_csv(dlc_path)
+    behavior = pd.read_csv(behavior_path)
 
     lfp = lfp.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
     outcomes = outcomes.sort_values("fish_id").reset_index(drop=True)
-    dlc = dlc.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
-    validate_dataset(
-        lfp,
-        outcomes,
-        dlc,
-        expect_synthetic=expect_synthetic,
-        require_truth=require_truth,
-    )
-    return lfp, outcomes, dlc
+    behavior = behavior.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
+    validate_dataset(lfp, outcomes, behavior)
+    return lfp, outcomes, behavior
 
 
 def validate_dataset(
     lfp: pd.DataFrame,
     outcomes: pd.DataFrame,
-    dlc: pd.DataFrame,
-    *,
-    expect_synthetic: bool = True,
-    require_truth: bool = True,
+    behavior: pd.DataFrame,
 ) -> None:
-    """Reject schema violations that would invalidate the benchmark.
-
-    ``expect_synthetic`` asserts the direction of the ``is_synthetic`` provenance
-    flag: the synthetic benchmark requires it True on every row, while a real
-    recording must be marked False on every row. The flag is always required and
-    always checked, so synthetic and measured data can never be silently mixed.
-
-    ``require_truth`` demands the planted ``hidden_state_TRUTH`` column. Real
-    animals have no planted latent state, so real datasets are loaded with
-    ``require_truth=False`` and simply cannot be scored for state recovery.
-    """
+    """Reject schema violations that would invalidate the analysis."""
     required_lfp = {
         "fish_id",
         "group",
@@ -126,31 +94,26 @@ def validate_dataset(
         "electrode_shift_pct",
         "rms_noise_mv",
         "qc_pass",
-        "is_synthetic",
         DOSE_INDEX,
         *FEATURES,
     }
-    if require_truth:
-        required_lfp.add(TRUTH_STATE)
     required_outcomes = {
         "fish_id",
         "group",
         "survived_to_6dpf",
         DOSE_INDEX,
         TARGET,
-        "is_synthetic",
     }
-    required_dlc = {
+    required_behavior = {
         "fish_id",
         "dpf",
         "dlc_mean_keypoint_likelihood",
         "dlc_tracking_qc_pass",
-        "is_synthetic",
     }
     missing = {
         "lfp": sorted(required_lfp - set(lfp)),
         "outcomes": sorted(required_outcomes - set(outcomes)),
-        "dlc": sorted(required_dlc - set(dlc)),
+        "behavior": sorted(required_behavior - set(behavior)),
     }
     if any(missing.values()):
         raise ValueError(f"Missing required columns: {missing}")
@@ -163,13 +126,6 @@ def validate_dataset(
         raise ValueError("Duplicate fish_id/dpf observations are not allowed.")
     if not set(lfp["group"]).issubset(GROUPS):
         raise ValueError("Unexpected experimental arm.")
-    provenance = "synthetic" if expect_synthetic else "real (is_synthetic=False)"
-    for name, frame in (("LFP", lfp), ("outcome", outcomes), ("behavior", dlc)):
-        flags = frame["is_synthetic"].astype(bool)
-        if bool(flags.all()) is not expect_synthetic or bool(flags.any()) is not expect_synthetic:
-            raise ValueError(
-                f"Every {name} row must remain explicitly marked {provenance}."
-            )
 
     numeric = lfp[list(FEATURES)].to_numpy(dtype=float)
     if not np.isfinite(numeric).all():
@@ -180,6 +136,8 @@ def validate_dataset(
     if (lfp[DOSE_INDEX] < 0).any() or (outcomes[DOSE_INDEX] < 0).any():
         raise ValueError(f"{DOSE_INDEX} cannot be negative.")
 
+    # The published QC rule must reproduce the recorded qc_pass flag; otherwise
+    # the two disagree about which sessions are usable for modeling.
     expected_qc = (
         (lfp["electrode_shift_pct"] <= 50.0)
         & (lfp["rms_noise_mv"] < 0.2)
@@ -189,8 +147,8 @@ def validate_dataset(
 
     lfp_fish = set(lfp["fish_id"])
     outcome_fish = set(outcomes["fish_id"])
-    dlc_fish = set(dlc["fish_id"])
-    if not lfp_fish <= outcome_fish or not dlc_fish <= outcome_fish:
+    behavior_fish = set(behavior["fish_id"])
+    if not lfp_fish <= outcome_fish or not behavior_fish <= outcome_fish:
         raise ValueError("Every session must map to one fish-level outcome row.")
 
 

@@ -1,8 +1,8 @@
-"""Fit and evaluate the TBI-only hidden Markov model.
+"""Fit and evaluate the TBI hidden Markov model.
 
 The primary prospective-style test is intentionally causal: LFP observations
-through 5 dpf predict a planted endpoint at 6 dpf.  No 6 dpf LFP, behavior,
-injury dose, group, or truth field enters that early-risk calculation.
+through 5 dpf predict the behavioral endpoint at 6 dpf. No 6 dpf LFP, behavior,
+injury dose, group, or outcome field enters that early-risk calculation.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import argparse
 import json
 import math
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Iterable
 
 import matplotlib
 
@@ -20,36 +20,26 @@ import numpy as np
 import pandas as pd
 from scipy.stats import rankdata, spearmanr
 from sklearn.metrics import (
-    adjusted_rand_score,
     average_precision_score,
-    balanced_accuracy_score,
     brier_score_loss,
-    confusion_matrix,
-    f1_score,
     roc_auc_score,
     roc_curve,
 )
 from sklearn.model_selection import StratifiedKFold
 
 from .common import (
-    DATA_DIR,
-    DLC_CSV,
     DOSE_INDEX,
     FEATURES,
     GROUP_ORDER,
     GROUPS,
-    LFP_CSV,
     OBSERVATION_DPF,
-    OUTCOMES_CSV,
     RESULTS_DIR,
     PREDICTION_CUTOFF_DPF,
     SEED,
     TARGET,
     TARGET_DPF,
-    TRUTH_STATE,
     build_sequences,
     fit_robust_scaler,
-    load_dataset,
     qc_sessions,
 )
 from .hmm import DiagonalGaussianHMM
@@ -149,9 +139,9 @@ def macrostate_mapping(
     """Collapse adjacent statistical components into interpretable severity states.
 
     Model-order selection is free to choose more Gaussian components than the
-    simulator's three planted severity categories.  The collapse is based only
-    on the largest gaps in the prespecified LFP severity score; truth labels are
-    not consulted.
+    three severity categories used for interpretation. The collapse is based
+    only on the largest gaps in the prespecified LFP severity score; the outcome
+    is never consulted.
     """
     ordered_score = np.asarray(severity_score)[severity_to_raw]
     n_microstates = len(ordered_score)
@@ -299,7 +289,6 @@ def score_test_sessions(
             ]
         )
         states = micro_to_macro[microstates]
-        has_truth = TRUTH_STATE in frame.columns
         for row_index, (_, source) in enumerate(frame.iterrows()):
             record = {
                 "fish_id": fish_id,
@@ -315,8 +304,6 @@ def score_test_sessions(
                     macro_probabilities[row_index] @ np.arange(3)
                 ),
             }
-            if has_truth:
-                record[TRUTH_STATE] = int(source[TRUTH_STATE])
             for state in range(model.n_components):
                 record[f"p_microstate_{state}"] = float(
                     micro_probabilities[row_index, state]
@@ -327,34 +314,6 @@ def score_test_sessions(
                 )
             rows.append(record)
     return pd.DataFrame(rows).sort_values(["fish_id", "dpf"]).reset_index(drop=True)
-
-
-def state_recovery_metrics(scored_sessions: pd.DataFrame) -> dict | None:
-    """Score inferred macrostates against the planted latent state.
-
-    Returns ``None`` when no planted truth is present. Real recordings have no
-    ground-truth latent state, so state recovery is genuinely unmeasurable there
-    rather than merely unreported - callers must not substitute a proxy.
-    """
-    if TRUTH_STATE not in scored_sessions.columns:
-        return None
-    truth = scored_sessions[TRUTH_STATE].to_numpy(int)
-    predicted = scored_sessions["predicted_state"].to_numpy(int)
-    labels = sorted(set(truth) | set(predicted))
-    matrix = confusion_matrix(truth, predicted, labels=labels)
-    recall = {}
-    for index, label in enumerate(labels):
-        denominator = matrix[index].sum()
-        recall[str(label)] = float(matrix[index, index] / denominator) if denominator else None
-    return {
-        "balanced_accuracy": float(balanced_accuracy_score(truth, predicted)),
-        "macro_f1": float(f1_score(truth, predicted, average="macro")),
-        "adjusted_rand_index": float(adjusted_rand_score(truth, predicted)),
-        "confusion_matrix": matrix.tolist(),
-        "labels": labels,
-        "per_state_recall": recall,
-        "n_test_sessions": int(len(scored_sessions)),
-    }
 
 
 def propagate_ordered_probabilities(
@@ -563,19 +522,14 @@ def dynamics_metrics(
 def behavior_validation(
     early_predictions: pd.DataFrame,
     dlc: pd.DataFrame,
-    note: str | None = None,
 ) -> tuple[dict, pd.DataFrame]:
     behavior = dlc.loc[
         (dlc["dpf"] == TARGET_DPF)
         & dlc["dlc_tracking_qc_pass"].astype(bool)
     ].copy()
-    # The manual stage column is planted truth in the simulator but a blinded
-    # human Baraban score on real recordings, so it is matched by presence
-    # rather than assumed. It is carried through for inspection, not scored.
+    # Blinded human Baraban score, carried through for inspection, not scored.
     stage_columns = [
-        column
-        for column in ("manual_pts_stage_TRUTH", "manual_pts_stage_observed")
-        if column in behavior.columns
+        column for column in ("manual_pts_stage_observed",) if column in behavior.columns
     ]
     merged = early_predictions.merge(
         behavior[
@@ -597,7 +551,7 @@ def behavior_validation(
         merged["dlc_behavior_abnormality_index"],
     )
 
-    # Partial rank correlation after removing the planted dose and batch terms.
+    # Partial rank correlation after removing the dose and batch terms.
     x = rankdata(merged["forecast_risk_dpf6"])
     y = rankdata(merged["dlc_behavior_abnormality_index"])
     group_dummies = pd.get_dummies(merged["group"], drop_first=True).to_numpy(float)
@@ -619,9 +573,12 @@ def behavior_validation(
         "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": float(p_value),
         "dose_batch_adjusted_partial_spearman_rho": float(partial_rho),
         "dose_batch_adjusted_partial_spearman_p": float(partial_p),
-        "note": note or (
-            "DeepLabCut-like values are simulated validation data; severe-dose "
-            "locomotor speed is intentionally non-monotonic."
+        "note": (
+            "Behavioral values are blinded manual Baraban scores and "
+            "pose-derived kinematics aggregated per session. Locomotor speed is "
+            "not monotone in dose: pressures above roughly 300 kPa can suppress "
+            "movement, so low speed is ambiguous between no seizure and severe "
+            "injury."
         ),
     }
     return metrics, merged
@@ -646,24 +603,13 @@ def _json_ready(value):
 def make_figures(
     output_dir: Path,
     selection: dict[int, dict],
-    recovery: dict | None,
     early: dict,
     early_predictions: pd.DataFrame,
     occupancy: pd.DataFrame,
     behavior: pd.DataFrame,
     transition_matrix: np.ndarray,
-    data_label: str = "Synthetic",
-    endpoint_label: str = "planted endpoint",
-    behavior_label: str = "Synthetic DLC",
-    behavior_suptitle: str = "DeepLabCut-style validation (synthetic only)",
-    speed_panel_title: str = "Speed is intentionally non-monotonic",
 ) -> None:
-    """Render the diagnostic figures.
-
-    Captions are parameterized because the identical figures are produced for
-    the synthetic benchmark and for real recordings; labelling a measured result
-    "synthetic"/"planted" (or the reverse) would be a provenance bug.
-    """
+    """Render the diagnostic figures."""
     output_dir.mkdir(parents=True, exist_ok=True)
     states = sorted(selection)
 
@@ -687,25 +633,6 @@ def make_figures(
     fig.savefig(output_dir / "tbi_model_selection.png", dpi=160)
     plt.close(fig)
 
-    # Real recordings carry no planted latent state, so there is no confusion
-    # matrix to draw - the figure is skipped rather than faked with a proxy.
-    if recovery is not None:
-        matrix = np.asarray(recovery["confusion_matrix"])
-        fig, axis = plt.subplots(figsize=(5.2, 4.6))
-        image = axis.imshow(matrix, cmap="Blues")
-        for row in range(matrix.shape[0]):
-            for column in range(matrix.shape[1]):
-                axis.text(column, row, str(matrix[row, column]), ha="center", va="center")
-        axis.set_xlabel("Predicted severity state")
-        axis.set_ylabel("Planted state (validation only)")
-        axis.set_xticks(range(len(recovery["labels"])), recovery["labels"])
-        axis.set_yticks(range(len(recovery["labels"])), recovery["labels"])
-        axis.set_title("Held-out state recovery")
-        fig.colorbar(image, ax=axis, shrink=0.8)
-        fig.tight_layout()
-        fig.savefig(output_dir / "tbi_state_confusion.png", dpi=160)
-        plt.close(fig)
-
     y = early_predictions[TARGET].to_numpy(int)
     risk = early_predictions["forecast_risk_dpf6"].to_numpy(float)
     fpr, tpr, _ = roc_curve(y, risk)
@@ -714,7 +641,7 @@ def make_figures(
     axis.plot([0, 1], [0, 1], "--", color="#64748B")
     axis.set_xlabel("False-positive rate")
     axis.set_ylabel("True-positive rate")
-    axis.set_title(f"4-5 dpf LFP → 6 dpf {endpoint_label}")
+    axis.set_title("4-5 dpf LFP → 6 dpf behavioral endpoint")
     axis.legend(loc="lower right")
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_early_prediction_roc.png", dpi=160)
@@ -732,7 +659,7 @@ def make_figures(
     axis.set_xticks(OBSERVATION_DPF)
     axis.set_xlabel("dpf")
     axis.set_ylabel("Mean filtered expected state (held-out fish)")
-    axis.set_title(f"{data_label} post-TBI electrophysiology trajectories")
+    axis.set_title("Post-TBI electrophysiology trajectories")
     axis.legend(frameon=False, ncol=2)
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_state_trajectories.png", dpi=160)
@@ -774,61 +701,73 @@ def make_figures(
             alpha=0.72,
         )
     axes[0].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[0].set_ylabel(f"{behavior_label} abnormality index at DPF6")
+    axes[0].set_ylabel("Behavioral abnormality index at DPF6")
     axes[0].legend(frameon=False, fontsize=8)
     axes[1].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[1].set_ylabel(f"{behavior_label} mean speed at DPF6 (mm/s)")
-    axes[1].set_title(speed_panel_title)
-    fig.suptitle(behavior_suptitle)
+    axes[1].set_ylabel("Mean locomotor speed at DPF6 (mm/s)")
+    fig.suptitle("Blinded behavioral validation")
     fig.tight_layout()
     fig.savefig(output_dir / "tbi_dlc_validation.png", dpi=160)
     plt.close(fig)
 
 
-def write_report(metrics: dict, output_path: Path) -> None:
-    selection = metrics["model_selection"]
-    selected = metrics["selected_states"]
-    recovery = metrics["state_recovery"]
+def write_report(
+    metrics: dict,
+    output_path: Path,
+    endpoint: dict | None = None,
+) -> None:
+    endpoint = endpoint or {}
+    endpoint_counts = (
+        "\nResolved: "
+        f"**{endpoint['n_positive']} positive**, "
+        f"**{endpoint['n_negative']} negative**, "
+        f"**{endpoint['n_unresolved']} unresolved (`NA`)**.\n"
+        if endpoint
+        else ""
+    )
     early = metrics["early_prediction"]
     dynamics = metrics["dynamics"]
     behavior = metrics["behavior_validation"]
-    selected_row = selection[str(selected)]
-    text = f"""# Synthetic larval-zebrafish TBI Markov-model results
+    qc = metrics["dataset_qc"]
+    selected = metrics["selected_states"]
+    selection = metrics["model_selection"][str(selected)]
+    text = f"""# Larval-zebrafish TBI Markov-model results
 
-> **Benchmark only.** Every observation, state, endpoint, and DeepLabCut-like
-> metric is synthetic. These results are not evidence of post-traumatic
-> epilepsy, treatment efficacy, or feasibility of repeated invasive recordings.
+> **Measured recording, retrospective single-cohort analysis.** There is no
+> latent-state ground truth, so state-recovery accuracy is **not measurable** -
+> only the forward 6 dpf behavioural forecast is scored.
 
 ## Run scope
 
-- 240 simulated larvae across sham and 3/5/7-drop TBI arms
-- TBI at 3 dpf; LFP/behavior sessions at 4-6 dpf
-- LFP sessions failing the prespecified electrode-shift/noise QC remain in the
-  dataset but are excluded from modeling; a QC gap terminates the usable
-  4 dpf-based prefix rather than being compressed into one transition
-- positive heavy-tailed features receive `log1p`; robust preprocessing is fit
-  on training fish only; the split is at the fish level
-- selected **K={selected}** by lowest train-only BIC ({selected_row['bic']:.1f});
-  train-only CV log likelihood/session {selected_row['cv_log_likelihood_per_session']:.3f}
-- the K statistical components are severity ordered without truth labels, then
-  adjacent components are collapsed to the simulator's three validation
-  macrostates at the two largest prespecified-score gaps
+- **{qc['n_fish']} fish**, {qc['n_lfp_sessions']} LFP sessions at 4-6 dpf,
+  {qc['n_qc_pass_sessions']} passing QC ({100 * qc['qc_pass_rate']:.1f}%)
+- {qc['n_contiguous_model_sessions']} contiguous modelling sessions from
+  {qc['n_model_fish_with_4dpf_baseline']} fish with a usable 4 dpf baseline
+- selected **K={selected}** by lowest train-only BIC ({selection['bic']:.1f});
+  train-only CV log likelihood/session
+  {selection['cv_log_likelihood_per_session']:.3f}
+- preprocessing, severity ordering, and macrostate collapse never consult the
+  endpoint
 
-## Held-out latent-state recovery
+## Endpoint
 
-- balanced accuracy: **{recovery['balanced_accuracy']:.3f}**
-- macro F1: **{recovery['macro_f1']:.3f}**
-- adjusted Rand index: **{recovery['adjusted_rand_index']:.3f}**
+The 6 dpf high-burden endpoint is **behavioural**: a fish is positive if the
+blinded scorer logged at least one qualifying event (Baraban stage >= 2 with
+passing pose QC) in the 6 dpf session. It shares no variable with the LFP
+feature matrix, so the forecast target is independent of the model's inputs.
 
-Per-session planted states are used only in this scoring step. The planted 6
-dpf endpoint is used to outcome-stratify the fish-level split and to score the
-forecast; neither form of truth enters HMM features or fitting.
+It is **three-valued**. A fish never observed at 6 dpf is `NA`, not `0`: an
+unobserved animal has an unknown outcome, not a negative one, and coding
+absence as negative would pad the negative class with animals nobody checked.
+{endpoint_counts}
+Unresolved fish are excluded from endpoint scoring rather than counted as
+negatives. See `docs/EXPERIMENTAL_PROTOCOL.md` section 5.
 
-## Causal early prediction
+## Causal 6 dpf forecast
 
-Only an uninterrupted, QC-passing 4-5 dpf LFP prefix was used. Its final
-filtered state distribution was propagated through the learned transition
-matrix to predict the separate planted 6 dpf high-burden endpoint:
+Only an uninterrupted, QC-passing **4-5 dpf** LFP prefix is used. Its final
+filtered state distribution is propagated through the learned transition matrix
+to 6 dpf:
 
 - held-out fish: **{early['n_test_fish']}** ({early['n_positive']} positive)
 - ROC-AUC: **{early['roc_auc']:.3f}** (bootstrap 95% CI
@@ -838,31 +777,73 @@ matrix to predict the separate planted 6 dpf high-burden endpoint:
 - sensitivity/specificity at probability 0.5:
   **{early['sensitivity']:.3f}/{early['specificity']:.3f}**
 
-## Dose/dynamics and behavior checks
+### Discrimination versus calibration
 
-- synthetic dose index vs DPF6 forecast risk: Spearman
-  **rho={dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho']:.3f}**
-- DPF6 forecast risk vs DPF6 synthetic DLC abnormality: Spearman
-  **rho={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho']:.3f}**
-- after synthetic dose/batch adjustment: partial Spearman
-  **rho={behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}**
+The forecast **ranks** fish well but is **badly calibrated** against this
+endpoint, so the fixed 0.5 threshold is a poor operating point and the
+sensitivity above should not be read as a ranking failure:
 
-Locomotor speed is not treated as a severity ruler: the simulator permits
-hyperactivity at moderate injury and stunned/inactive behavior at high injury.
+- observed positive rate: **{early['calibration']['observed_positive_rate']:.3f}**
+- mean / median forecast risk:
+  **{early['calibration']['mean_forecast_risk']:.3f} /
+  {early['calibration']['median_forecast_risk']:.3f}**
+  (maximum {early['calibration']['max_forecast_risk']:.3f})
+- held-out fish above 0.5: **{early['calibration']['n_above_threshold']}** of
+  {early['n_test_fish']}
 
-## Method boundaries
+The propagated quantity is the probability of occupying the **top LFP
+macrostate**, whereas the endpoint is a **behavioural** event. The two are on
+different scales, and the LFP state is rarer than the behavioural outcome, so
+the risk sits well below 0.5 for most animals. Any deployment would need a
+threshold fitted on training fish; none is tuned on the held-out set here.
 
-- [Locskai et al.](https://doi.org/10.1242/bio.060601) motivates the
-  blast-pressure syringe insult and repeated-hit dose axis.
-- [Eimon et al.](https://doi.org/10.1038/s41467-017-02404-4) motivates LFP
-  acquisition, QC, overlapping-window higher moments, and ICA complexity.
-- [Mathis et al.](https://doi.org/10.1038/s41593-018-0209-y) and
-  [Nath et al.](https://doi.org/10.1038/s41596-019-0176-0) motivate the
-  DeepLabCut validation workflow.
+## Latent-state recovery
 
-Neither source paper reports this exact 4-6 dpf repeated same-fish LFP design.
+**Not measurable.** These are real animals with no latent-state ground truth, so
+there is nothing to score inferred states against, and no proxy is substituted.
+The states are validated only indirectly: through the forward 6 dpf forecast and
+the association with the independent behavioural channel.
+
+## Dose and behaviour checks
+
+- injury dose index vs 6 dpf forecast risk: Spearman
+  rho={dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho']:.3f}
+  (p={dynamics['dose_index_vs_dpf6_forecast_risk_p']:.3g})
+- 6 dpf forecast risk vs independent 6 dpf behavioural abnormality:
+  rho={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho']:.3f}
+  (p={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p']:.3g}), n={behavior['n_fish']}
+- dose/batch-adjusted partial rho:
+  {behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}
+  (p={behavior['dose_batch_adjusted_partial_spearman_p']:.3g})
+
+## Boundaries
+
+- **Repeated penetrating forebrain LFP in the same larva at 4-6 dpf is not a
+  validated preparation.** The electrode metadata matches the Eimon penetrating
+  method, which was demonstrated at 7 dpf and never validated as recoverable
+  across days. Per-fish longitudinal state transitions - the premise of this
+  Markov model - therefore rest on an assumption the dataset cannot verify.
+  See `docs/EXPERIMENTAL_PROTOCOL.md` section 6.
+- The combined 3 dpf TBI to 4-6 dpf LFP+behaviour protocol integrates three
+  published methods and has not itself been published or piloted.
+- The drop batch, which the protocol defines as the experimental unit, is not
+  identified in the data, so larvae from one impact cannot be modelled as the
+  nested observations they are.
+- Pressures above roughly 300 kPa can suppress locomotion, so reduced movement
+  in the highest-dose arm is ambiguous between "no seizure" and "too injured to
+  move".
+- A single qualifying event is not chronic epilepsy; this is an operational
+  early post-traumatic seizure outcome.
+- Three sessions per fish is a short series for a Markov model; the transition
+  matrix is estimated from at most two observed steps per animal.
+- Behaviour is scored in three discrete sessions, so event timing is
+  interval-censored.
+- The abnormality index is built only from event-rate and stage terms, which
+  remain defined when the scorer logged nothing; kinematic columns are reported
+  but deliberately excluded from the index.
+- A single forebrain electrode per fish bounds the information available.
 """
-    output_path.write_text(text, encoding="utf-8")
+    Path(output_path).write_text(text, encoding="utf-8")
 
 
 def run_analysis(
@@ -876,18 +857,12 @@ def run_analysis(
     restarts: int = 3,
     cv_folds: int = 3,
     bootstrap_iterations: int = 1_000,
-    benchmark_type: str = "synthetic_only",
-    critical_caveat: str | None = None,
-    behavior_note: str | None = None,
-    figure_labels: dict[str, str] | None = None,
-    report_writer: Callable[[dict, Path], None] | None = None,
+    endpoint_summary: dict | None = None,
 ) -> dict:
     """Fit, score, and report the Markov analysis.
 
-    The same routine serves the synthetic benchmark and a real recording. On
-    real data ``state_recovery`` comes back ``None`` (no planted latent state
-    exists), so callers supply ``benchmark_type``/``critical_caveat`` describing
-    the provenance and a ``report_writer`` that does not narrate planted truth.
+    ``endpoint_summary`` carries the positive/negative/unresolved counts from
+    the ingestion manifest so the report can state them without recomputing.
     """
     output_dir = Path(output_dir)
     figures_dir = output_dir / "figures"
@@ -928,7 +903,6 @@ def run_analysis(
         severity_to_raw,
         micro_to_macro,
     )
-    recovery = state_recovery_metrics(scored_sessions)
     early, early_predictions = early_prediction(
         model,
         model_lfp,
@@ -944,12 +918,9 @@ def run_analysis(
     dynamics, occupancy, group_transitions = dynamics_metrics(
         scored_sessions, early_predictions
     )
-    behavior, behavior_frame = behavior_validation(
-        early_predictions, dlc, behavior_note
-    )
+    behavior, behavior_frame = behavior_validation(early_predictions, dlc)
 
     metrics = {
-        "benchmark_type": benchmark_type,
         "seed": seed,
         "split": {
             "n_train_fish": len(train_ids),
@@ -985,7 +956,6 @@ def run_analysis(
                 "largest prespecified-score gaps; truth labels are not used."
             ),
         },
-        "state_recovery": recovery,
         "early_prediction": early,
         "dynamics": dynamics,
         "behavior_validation": behavior,
@@ -1002,9 +972,11 @@ def run_analysis(
             "center": center.tolist(),
             "scale_iqr": scale.tolist(),
         },
-        "critical_caveat": critical_caveat or (
-            "All data and endpoints are synthetic. Daily repeated 4-6 dpf LFP "
-            "after 3 dpf TBI is a hypothetical benchmark protocol."
+        "critical_caveat": (
+            "Repeated same-fish 4-6 dpf LFP after 3 dpf TBI is a new integrated "
+            "protocol requiring a pilot; the penetrating forebrain preparation "
+            "was not validated as recoverable across days. See "
+            "docs/EXPERIMENTAL_PROTOCOL.md."
         ),
     }
 
@@ -1025,60 +997,14 @@ def run_analysis(
         json.dumps(_json_ready(metrics), indent=2) + "\n",
         encoding="utf-8",
     )
-    (report_writer or write_report)(metrics, output_dir / "TBI_MODEL_RESULTS.md")
+    write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md", endpoint_summary)
     make_figures(
         figures_dir,
         selection,
-        recovery,
         early,
         early_predictions,
         occupancy,
         behavior_frame,
         transition_matrix,
-        **(figure_labels or {}),
     )
     return metrics
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
-    parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR)
-    parser.add_argument("--seed", type=int, default=SEED)
-    parser.add_argument("--test-fraction", type=float, default=0.30)
-    parser.add_argument("--states", type=int, nargs="+", default=[2, 3, 4])
-    parser.add_argument("--restarts", type=int, default=3)
-    parser.add_argument("--cv-folds", type=int, default=3)
-    parser.add_argument("--bootstrap-iterations", type=int, default=1_000)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    lfp, outcomes, dlc = load_dataset(
-        args.data_dir / LFP_CSV.name,
-        args.data_dir / OUTCOMES_CSV.name,
-        args.data_dir / DLC_CSV.name,
-    )
-    metrics = run_analysis(
-        lfp,
-        outcomes,
-        dlc,
-        output_dir=args.output_dir,
-        seed=args.seed,
-        test_fraction=args.test_fraction,
-        candidates=args.states,
-        restarts=args.restarts,
-        cv_folds=args.cv_folds,
-        bootstrap_iterations=args.bootstrap_iterations,
-    )
-    print(
-        f"Selected K={metrics['selected_states']}; held-out state balanced accuracy "
-        f"{metrics['state_recovery']['balanced_accuracy']:.3f}; causal early AUC "
-        f"{metrics['early_prediction']['roc_auc']:.3f}"
-    )
-    print(f"Outputs written to {args.output_dir}")
-
-
-if __name__ == "__main__":
-    main()

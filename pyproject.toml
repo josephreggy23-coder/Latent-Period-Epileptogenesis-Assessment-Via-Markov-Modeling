@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "latent-tbi-markov"
-version = "1.2.0"
-description = "Larval-zebrafish TBI electrophysiology hidden-Markov benchmark, with a synthetic simulator and a real-recording analysis path"
+version = "2.0.0"
+description = "Hidden-Markov modeling of larval-zebrafish forebrain LFP after traumatic brain injury"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -43,10 +43,7 @@ dev = [
 ]
 
 [project.scripts]
-tbi-generate = "tbi_markov.synthetic:main"
-tbi-analyze = "tbi_markov.modeling:main"
-tbi-pipeline = "tbi_markov.pipeline:main"
-tbi-real = "tbi_markov.real_data:main"
+tbi-analyze = "tbi_markov.dataset:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,9 +1,9 @@
 cff-version: 1.2.0
-message: "If you use this synthetic benchmark, please cite the software repository."
+message: "If you use this software, please cite the repository."
 title: "Larval Zebrafish TBI Markov Modeling"
 type: software
-version: 1.0.0
-date-released: 2026-07-24
+version: 2.0.0
+date-released: 2026-07-25
 authors:
   - family-names: "David"
     given-names: "Joseph Regito"

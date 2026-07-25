@@ -1,68 +1,113 @@
-# Synthetic larval-zebrafish TBI Markov-model results
+# Larval-zebrafish TBI Markov-model results
 
-> **Benchmark only.** Every observation, state, endpoint, and DeepLabCut-like
-> metric is synthetic. These results are not evidence of post-traumatic
-> epilepsy, treatment efficacy, or feasibility of repeated invasive recordings.
+> **Measured recording, retrospective single-cohort analysis.** There is no
+> latent-state ground truth, so state-recovery accuracy is **not measurable** -
+> only the forward 6 dpf behavioural forecast is scored.
 
 ## Run scope
 
-- 240 simulated larvae across sham and 3/5/7-drop TBI arms
-- TBI at 3 dpf; LFP/behavior sessions at 4-6 dpf
-- LFP sessions failing the prespecified electrode-shift/noise QC remain in the
-  dataset but are excluded from modeling; a QC gap terminates the usable
-  4 dpf-based prefix rather than being compressed into one transition
-- positive heavy-tailed features receive `log1p`; robust preprocessing is fit
-  on training fish only; the split is at the fish level
-- selected **K=4** by lowest train-only BIC (706.2);
-  train-only CV log likelihood/session -0.552
-- the K statistical components are severity ordered without truth labels, then
-  adjacent components are collapsed to the simulator's three validation
-  macrostates at the two largest prespecified-score gaps
+- **240 fish**, 706 LFP sessions at 4-6 dpf,
+  706 passing QC (100.0%)
+- 706 contiguous modelling sessions from
+  240 fish with a usable 4 dpf baseline
+- selected **K=4** by lowest train-only BIC (1802.6);
+  train-only CV log likelihood/session
+  -1.696
+- preprocessing, severity ordering, and macrostate collapse never consult the
+  endpoint
 
-## Held-out latent-state recovery
+## Endpoint
 
-- balanced accuracy: **1.000**
-- macro F1: **1.000**
-- adjusted Rand index: **1.000**
+The 6 dpf high-burden endpoint is **behavioural**: a fish is positive if the
+blinded scorer logged at least one qualifying event (Baraban stage >= 2 with
+passing pose QC) in the 6 dpf session. It shares no variable with the LFP
+feature matrix, so the forecast target is independent of the model's inputs.
 
-Per-session planted states are used only in this scoring step. The planted 6
-dpf endpoint is used to outcome-stratify the fish-level split and to score the
-forecast; neither form of truth enters HMM features or fitting.
+It is **three-valued**. A fish never observed at 6 dpf is `NA`, not `0`: an
+unobserved animal has an unknown outcome, not a negative one, and coding
+absence as negative would pad the negative class with animals nobody checked.
 
-## Causal early prediction
+Resolved: **60 positive**, **173 negative**, **7 unresolved (`NA`)**.
 
-Only an uninterrupted, QC-passing 4-5 dpf LFP prefix was used. Its final
-filtered state distribution was propagated through the learned transition
-matrix to predict the separate planted 6 dpf high-burden endpoint:
+Unresolved fish are excluded from endpoint scoring rather than counted as
+negatives. See `docs/EXPERIMENTAL_PROTOCOL.md` section 5.
 
-- held-out fish: **68** (12 positive)
-- ROC-AUC: **0.864** (bootstrap 95% CI
-  0.758-0.945)
-- average precision: **0.489**
-- Brier score: **0.104**
+## Causal 6 dpf forecast
+
+Only an uninterrupted, QC-passing **4-5 dpf** LFP prefix is used. Its final
+filtered state distribution is propagated through the learned transition matrix
+to 6 dpf:
+
+- held-out fish: **71** (19 positive)
+- ROC-AUC: **0.749** (bootstrap 95% CI
+  0.642-0.853)
+- average precision: **0.438**
+- Brier score: **0.206**
 - sensitivity/specificity at probability 0.5:
-  **0.417/0.946**
+  **0.105/0.962**
 
-## Dose/dynamics and behavior checks
+### Discrimination versus calibration
 
-- synthetic dose index vs DPF6 forecast risk: Spearman
-  **rho=0.343**
-- DPF6 forecast risk vs DPF6 synthetic DLC abnormality: Spearman
-  **rho=0.628**
-- after synthetic dose/batch adjustment: partial Spearman
-  **rho=0.476**
+The forecast **ranks** fish well but is **badly calibrated** against this
+endpoint, so the fixed 0.5 threshold is a poor operating point and the
+sensitivity above should not be read as a ranking failure:
 
-Locomotor speed is not treated as a severity ruler: the simulator permits
-hyperactivity at moderate injury and stunned/inactive behavior at high injury.
+- observed positive rate: **0.268**
+- mean / median forecast risk:
+  **0.116 /
+  0.037**
+  (maximum 0.625)
+- held-out fish above 0.5: **4** of
+  71
 
-## Method boundaries
+The propagated quantity is the probability of occupying the **top LFP
+macrostate**, whereas the endpoint is a **behavioural** event. The two are on
+different scales, and the LFP state is rarer than the behavioural outcome, so
+the risk sits well below 0.5 for most animals. Any deployment would need a
+threshold fitted on training fish; none is tuned on the held-out set here.
 
-- [Locskai et al.](https://doi.org/10.1242/bio.060601) motivates the
-  blast-pressure syringe insult and repeated-hit dose axis.
-- [Eimon et al.](https://doi.org/10.1038/s41467-017-02404-4) motivates LFP
-  acquisition, QC, overlapping-window higher moments, and ICA complexity.
-- [Mathis et al.](https://doi.org/10.1038/s41593-018-0209-y) and
-  [Nath et al.](https://doi.org/10.1038/s41596-019-0176-0) motivate the
-  DeepLabCut validation workflow.
+## Latent-state recovery
 
-Neither source paper reports this exact 4-6 dpf repeated same-fish LFP design.
+**Not measurable.** These are real animals with no latent-state ground truth, so
+there is nothing to score inferred states against, and no proxy is substituted.
+The states are validated only indirectly: through the forward 6 dpf forecast and
+the association with the independent behavioural channel.
+
+## Dose and behaviour checks
+
+- injury dose index vs 6 dpf forecast risk: Spearman
+  rho=0.623
+  (p=6.38e-09)
+- 6 dpf forecast risk vs independent 6 dpf behavioural abnormality:
+  rho=0.320
+  (p=0.00874), n=66
+- dose/batch-adjusted partial rho:
+  0.033
+  (p=0.793)
+
+## Boundaries
+
+- **Repeated penetrating forebrain LFP in the same larva at 4-6 dpf is not a
+  validated preparation.** The electrode metadata matches the Eimon penetrating
+  method, which was demonstrated at 7 dpf and never validated as recoverable
+  across days. Per-fish longitudinal state transitions - the premise of this
+  Markov model - therefore rest on an assumption the dataset cannot verify.
+  See `docs/EXPERIMENTAL_PROTOCOL.md` section 6.
+- The combined 3 dpf TBI to 4-6 dpf LFP+behaviour protocol integrates three
+  published methods and has not itself been published or piloted.
+- The drop batch, which the protocol defines as the experimental unit, is not
+  identified in the data, so larvae from one impact cannot be modelled as the
+  nested observations they are.
+- Pressures above roughly 300 kPa can suppress locomotion, so reduced movement
+  in the highest-dose arm is ambiguous between "no seizure" and "too injured to
+  move".
+- A single qualifying event is not chronic epilepsy; this is an operational
+  early post-traumatic seizure outcome.
+- Three sessions per fish is a short series for a Markov model; the transition
+  matrix is estimated from at most two observed steps per animal.
+- Behaviour is scored in three discrete sessions, so event timing is
+  interval-censored.
+- The abnormality index is built only from event-rate and stage terms, which
+  remain defined when the scorer logged nothing; kinematic columns are reported
+  but deliberately excluded from the index.
+- A single forebrain electrode per fish bounds the information available.

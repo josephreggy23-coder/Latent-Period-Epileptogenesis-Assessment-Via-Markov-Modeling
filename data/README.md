@@ -1,41 +1,26 @@
 # Data
 
-This directory holds two clearly separated datasets:
+Every row in this directory represents a real larval zebrafish.
 
-- **`synthetic/`** — simulator output. No row represents an experimental animal.
-- **`real/`** — a normalized real 240-fish weight-drop TBI recording. Every row
-  represents a real animal.
+`measured/` holds the normalized analysis tables, generated from the source
+workbooks by `tbi-analyze`. The workbooks at the repository root are the
+authoritative inputs; everything here is derived and rebuilt on each run.
 
-Every table in both directories carries an `is_synthetic` flag, and the loader
-asserts it in **both** directions: a synthetic load rejects measured rows and a
-real load rejects simulated rows. The two can never be silently mixed.
-
-The real tables are generated from the source workbooks by `tbi-real`; only the
-normalized CSVs and a provenance manifest are written here. The `real/` tables
-carry **no** `hidden_state_TRUTH` column, because no planted latent state
-exists — state recovery is unmeasurable on real data, not merely unreported.
-
-## Authoritative files (synthetic)
-
-The normalized analysis tables are stored in `data/synthetic/`:
+## Files
 
 | File | Rows | Purpose |
 |---|---:|---|
-| `tbi_4_6dpf_lfp_timeseries.csv` | 706 | Session protocol, QC, seven HMM features, planted state |
-| `tbi_4_6dpf_fish_outcomes.csv` | 240 | Injury arm, attrition, and planted DPF6 endpoint |
-| `tbi_4_6dpf_dlc_behavior.csv` | 706 | Synthetic pose-derived validation features |
-| `tbi_4_6dpf_dataset_manifest.json` | — | Seed, scope, definitions, sources, and SHA-256 hashes |
-| `TBI_4_6dpf_synthetic_data.xlsx` | — | Formatted seed-42 workbook for human review |
-
-The CSV tables and manifest are authoritative after regeneration. The workbook
-is a formatted snapshot of the default seed-42 cohort.
+| `tbi_4_6dpf_lfp_timeseries.csv` | 706 | Session protocol, QC, and the seven HMM features |
+| `tbi_4_6dpf_fish_outcomes.csv` | 240 | Arm, dose, survival, and the 6 dpf endpoint |
+| `tbi_4_6dpf_behavior.csv` | 706 | Per-session aggregate of the blinded Event Log |
+| `tbi_4_6dpf_manifest.json` | — | Cohort scope, arm counts, and endpoint definition |
 
 ## Table relationships
 
 ```text
 fish_outcomes (one row/fish)
-    ├── LFP_timeseries (zero to three rows/fish)
-    └── DLC_behavior (zero to three rows/fish)
+    ├── lfp_timeseries (one to three rows/fish)
+    └── behavior       (one row per LFP session)
 ```
 
 `fish_id` is the primary key in the outcomes table and combines with `dpf` to
@@ -53,29 +38,31 @@ Only these LFP columns enter the HMM:
 - `lfp_seizure_event_rate_per_h`
 - `lfp_ica_complexity`
 
-Columns containing `TRUTH`, injury metadata, dose, group, batch, QC results, or
-behavior are excluded from model inputs.
+Injury metadata, dose, group, batch, QC results, behavior, and the endpoint are
+excluded from model inputs.
 
-The same seven columns, and only those, enter the HMM for the real recording.
+## The endpoint
 
-## Real files (`real/`)
+`high_burden_state_dpf6` is behavioral and **three-valued**:
 
-| File | Rows | Purpose |
-|---|---:|---|
-| `tbi_4_6dpf_real_lfp_timeseries.csv` | 706 | Session protocol, QC, and the seven HMM features |
-| `tbi_4_6dpf_real_fish_outcomes.csv` | 240 | Arm, dose, survival, and the behavioral 6 dpf endpoint |
-| `tbi_4_6dpf_real_behavior.csv` | 706 | Per-session aggregate of the blinded Event Log |
-| `tbi_4_6dpf_real_manifest.json` | — | Provenance, endpoint definition, and arm counts |
+| Value | Meaning |
+|---|---|
+| `1` | ≥ 1 qualifying blinded event (Baraban stage ≥ 2, passing pose QC) at 6 dpf |
+| `0` | observed at 6 dpf, no qualifying event |
+| `NA` | no evidence the fish was observed at 6 dpf |
 
-### The real endpoint
+Seven fish are `NA`. An unobserved animal has an unknown outcome, not a negative
+one; coding absence as `0` would pad the negative class with animals nobody
+checked. Those fish are excluded from endpoint scoring.
 
-`high_burden_state_dpf6_TRUTH` keeps its name so the two datasets share one
-schema, but on real data it is **not planted truth**: a fish is positive if the
-blinded scorer logged at least one qualifying event (Baraban stage ≥ 2 with
-passing pose QC) in the 6 dpf session. It is derived purely from behavior and
-shares no variable with the LFP feature matrix.
+Evidence of observation is a 6 dpf LFP session **or** any 6 dpf behavioral row,
+including a normal one — the Event Log records normal swim bouts, so presence
+proves observation while absence alone proves nothing.
 
-### Zero-event behavior sessions
+The endpoint is derived purely from behavior and shares no variable with the LFP
+feature matrix.
+
+## Zero-event behavior sessions
 
 The source Event Log contains only scored events, so a session in which the
 scorer logged nothing is absent from it. Those sessions are written out with
@@ -86,11 +73,8 @@ subset and bias it.
 ## Regeneration
 
 ```bash
-tbi-generate --seed 42 --n-per-arm 60   # synthetic
-tbi-real                                # real, from the source workbooks
+tbi-analyze
 ```
 
-`tbi-generate` rewrites the synthetic CSV tables and manifest
-deterministically; the manifest hashes are checked by the test suite.
-`tbi-real` rewrites `real/` from `actualdata1(lfp).xlsx` and
-`actualdata(behavioral).xlsx` at the repository root.
+Rewrites `measured/` from `actualdata1(lfp).xlsx` and
+`actualdata(behavioral).xlsx` at the repository root, then runs the analysis.

@@ -2,6 +2,55 @@
 
 All notable project changes are documented here.
 
+## 2.0.0 — 2026-07-25
+
+**Breaking.** The synthetic simulator and every artifact derived from it are
+removed. The simulator existed to validate that the estimator recovers known
+latent states; that job is done, and keeping it alongside a measured cohort
+invited confusion about which numbers describe real animals. The repository is
+now a single-purpose analysis of one measured recording.
+
+### Removed
+
+- `tbi_markov.synthetic` (simulator), `tbi_markov.pipeline`, `data/synthetic/`,
+  and the simulator's committed results.
+- `tbi-generate` and `tbi-pipeline` entry points; `scripts/generate_dataset.py`
+  and `scripts/run_pipeline.py`.
+- The `is_synthetic` provenance flag, the `hidden_state_TRUTH` column, and
+  `state_recovery_metrics` — with no simulator there is no latent-state ground
+  truth, so state recovery is not measurable and no proxy is reported.
+- The state-recovery confusion-matrix figure.
+
+### Changed
+
+- `tbi_markov.real_data` → `tbi_markov.dataset`; `data/real/` →
+  `data/measured/`; `results_real/` → `results/`. Names contrasted with the
+  simulator, which no longer exists.
+- The endpoint column is renamed `high_burden_state_dpf6`. It was previously
+  suffixed `_TRUTH` for schema compatibility with planted data, which misstated
+  a behavioral observation as ground truth.
+- `tbi-analyze` now runs the full ingest-and-analyze workflow; `python -m
+  tbi_markov` does the same.
+- `run_analysis` loses the provenance-switching parameters (`benchmark_type`,
+  `critical_caveat`, `figure_labels`, `report_writer`) that existed only to keep
+  one code path serving two data sources. Figure captions and the report are no
+  longer parameterized.
+- The behavioral-validation note no longer describes values as simulated; it
+  states that locomotor speed is non-monotone in dose because pressures above
+  ~300 kPa suppress movement.
+- Tests build small in-memory fixtures instead of calling the simulator. The
+  leakage, split, prefix, and propagation tests are unchanged in substance.
+- README, `docs/METHODS.md`, `docs/REPRODUCIBILITY.md`, `data/README.md`,
+  `CONTRIBUTING.md`, `CITATION.cff`, and the PR template are rewritten for a
+  measured-data project.
+
+### Note
+
+Results are unchanged: ROC-AUC 0.749 (95% CI 0.642–0.853) on 71 held-out fish.
+Removing the simulator removed no evidence bearing on the measured cohort.
+Earlier commits remain in git history; this release changes the working tree,
+not the past.
+
 ## 1.2.0 — 2026-07-25
 
 ### Added

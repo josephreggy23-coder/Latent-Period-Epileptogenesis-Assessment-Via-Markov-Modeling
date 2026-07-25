@@ -373,9 +373,9 @@ statistical model.
 
 ---
 
-## 8. How the committed dataset maps to this protocol
+## 8. How the dataset maps to this protocol
 
-The real dataset in `data/real/` matches the apparatus specification in §1–2:
+The dataset in `data/measured/` matches the apparatus specification in §1–2:
 20 mL syringe, three-prong clamp, 108 cm, **single drop**, 100/200/300 g, with
 measured peak pressures of 115 / 210 / 319 kPa — inside and at the top of the
 90–300 kPa behavioral-seizure range.
@@ -405,14 +405,14 @@ measured peak pressures of 115 / 210 / 319 kPa — inside and at the top of the
 
 2. **The seizure endpoint is interval-censored, not exact.** Behavior is scored
    in three discrete sessions, so the reconstructed timing is
-   `first_observed_seizure_hours` in the sense of §4. The repository's real
-   endpoint therefore uses **presence of a qualifying event in the 6 dpf
-   session**, not a continuous latency.
+   `first_observed_seizure_hours` in the sense of §4. The endpoint therefore
+   uses **presence of a qualifying event in the 6 dpf session**, not a
+   continuous latency.
 
 3. **Seven fish have no 6 dpf observation.** Per §5 they are coded `NA`, not
    `0`. They are excluded from endpoint scoring rather than counted as
-   negatives. This is enforced in `tbi_markov.real_data._dpf6_endpoint` and
-   covered by `tests/test_real_data.py`.
+   negatives. This is enforced in `tbi_markov.dataset._dpf6_endpoint` and
+   covered by `tests/test_dataset.py`.
 
 ---
 

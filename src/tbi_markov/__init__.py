@@ -1,6 +1,6 @@
-"""Larval-zebrafish TBI Markov modeling: synthetic benchmark plus real-data analysis."""
+"""Larval-zebrafish TBI electrophysiology: hidden-Markov modeling of LFP."""
 
 from .hmm import DiagonalGaussianHMM
 
 __all__ = ["DiagonalGaussianHMM"]
-__version__ = "1.2.0"
+__version__ = "2.0.0"
