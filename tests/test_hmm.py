@@ -5,7 +5,7 @@ import numpy as np
 from tbi_markov.hmm import DiagonalGaussianHMM
 
 
-def _simulate_short_sequences(
+def _make_short_sequences(
     n_sequences: int = 240, seed: int = 812
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     rng = np.random.default_rng(seed)
@@ -34,7 +34,7 @@ def _simulate_short_sequences(
 
 
 def _fit_model() -> tuple[DiagonalGaussianHMM, list[np.ndarray], list[np.ndarray]]:
-    sequences, states = _simulate_short_sequences()
+    sequences, states = _make_short_sequences()
     model = DiagonalGaussianHMM(
         3,
         random_state=91,

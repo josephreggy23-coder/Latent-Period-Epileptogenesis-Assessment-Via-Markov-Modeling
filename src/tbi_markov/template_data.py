@@ -1,9 +1,10 @@
-"""Generate the deterministic 4-6 dpf synthetic larval-zebrafish TBI cohort.
+"""Initialize deterministic placeholder rows for the 4-6 dpf TBI template.
 
-This is a simulator, not an extraction of animal-level measurements from any
-paper.  Locskai et al. motivate the blast-pressure insult and repeated-hit dose
-axis; Eimon et al. motivate the LFP acquisition/QC and statistical summaries;
-DeepLabCut motivates the independent pose-derived behavior table.
+The generated values are synthetic editable placeholders, not animal measurements.
+Locskai et al. motivate the blast-pressure insult and repeated-hit dose axis;
+Eimon et al. motivate the LFP acquisition/QC and statistical summaries; and
+DeepLabCut motivates the generated pose-style summary interface. The generated
+behavior and LFP features share a planted latent state and are not independent.
 """
 from __future__ import annotations
 
@@ -24,6 +25,8 @@ from .common import (
     LFP_CSV,
     OBSERVATION_DPF,
     OUTCOMES_CSV,
+    PLACEHOLDER_STATUS,
+    RECORD_STATUS,
     SEED,
     TARGET,
     TRUTH_STATE,
@@ -37,7 +40,7 @@ DLC_PROTOCOL_URL = "https://doi.org/10.1038/s41596-019-0176-0"
 
 GROUP_CONFIG = {
     # The apparatus is held fixed and only the repeated-hit count changes.
-    # A nominal 195 kPa per-hit center is a simulator assumption within the
+    # A nominal 195 kPa per-hit center is a template assumption within the
     # approximately 90-300 kPa seizure-associated range reported by Locskai.
     "sham": {
         "n_weight_drops": 0,
@@ -190,7 +193,7 @@ def _sample_behavior(
     behavior = {
         "dpf": dpf,
         "video_id": "",
-        "dlc_model": "synthetic_dlc_resnet50_placeholder",
+        "dlc_model": "dlc_resnet50_placeholder",
         "dlc_keypoints": "head|midline_1|midline_2|midline_3|midline_4|tail_tip",
         "dlc_pcutoff": 0.90,
         "dlc_mean_keypoint_likelihood": round(float(likelihood), 4),
@@ -243,8 +246,8 @@ def generate_dataset(
                 measured_pressure = 0.0
             else:
                 measured_pressure = float(max(60.0, rng.normal(config["pressure_kpa"], 18.0)))
-            # This is a synthetic exposure index (peak kPa x hit count), not a
-            # measured pressure integral. Its unit is therefore kPa-hits.
+            # Placeholder exposure index (peak kPa x hit count), not a measured
+            # pressure integral. Its unit is therefore kPa-hits.
             cumulative_burden = measured_pressure * config["n_weight_drops"]
 
             initial = _adjust_probs_for_vulnerability(config["initial"], vulnerability)
@@ -268,15 +271,15 @@ def generate_dataset(
                     first_state2_dpf = dpf
 
                 noisy_session = rng.random() < 0.035
-                electrode_shift = float(
+                resistance_change = float(
                     rng.uniform(55.0, 90.0) if noisy_session and rng.random() < 0.65
                     else np.clip(rng.gamma(2.2, 5.5), 0.0, 49.5)
                 )
                 rms_noise = float(
-                    rng.uniform(0.205, 0.34) if noisy_session and electrode_shift <= 50.0
+                    rng.uniform(0.205, 0.34) if noisy_session and resistance_change <= 50.0
                     else np.clip(rng.lognormal(np.log(0.075), 0.27), 0.02, 0.195)
                 )
-                qc_pass = bool(electrode_shift <= 50.0 and rms_noise < 0.2)
+                qc_pass = bool(resistance_change <= 50.0 and rms_noise < 0.2)
                 lfp = _sample_lfp(state, fish_effect, rng)
                 lfp_rows.append(
                     {
@@ -306,12 +309,14 @@ def generate_dataset(
                             float(np.clip(rng.normal(3.0, 0.28), 1.8, 4.2)), 4
                         ),
                         "rms_noise_mv": round(rms_noise, 4),
-                        "electrode_shift_pct": round(electrode_shift, 4),
+                        "electrode_resistance_change_pct": round(
+                            resistance_change, 4
+                        ),
                         "qc_pass": qc_pass,
                         **lfp,
                         TRUTH_STATE: state,
-                        "is_synthetic": True,
-                        "simulator_seed": seed,
+                        RECORD_STATUS: PLACEHOLDER_STATUS,
+                        "template_seed": seed,
                     }
                 )
 
@@ -321,8 +326,8 @@ def generate_dataset(
                 behavior["fish_id"] = fish_id
                 behavior["group"] = group
                 behavior["video_id"] = f"VID_{fish_id}_{dpf}dpf"
-                behavior["is_synthetic"] = True
-                behavior["simulator_seed"] = seed
+                behavior[RECORD_STATUS] = PLACEHOLDER_STATUS
+                behavior["template_seed"] = seed
                 behavior_rows.append(behavior)
                 max_manual_stage = max(max_manual_stage, manual_stage)
 
@@ -345,8 +350,8 @@ def generate_dataset(
                     "max_hidden_state_TRUTH": max(states.values()),
                     "max_manual_pts_stage_TRUTH": max_manual_stage,
                     "susceptibility_z_TRUTH": round(vulnerability, 4),
-                    "is_synthetic": True,
-                    "simulator_seed": seed,
+                    RECORD_STATUS: PLACEHOLDER_STATUS,
+                    "template_seed": seed,
                 }
             )
 
@@ -375,8 +380,8 @@ def generate_dataset(
         "dlc_behavior_abnormality_index",
         "manual_pts_stage_TRUTH",
         "stunned_phenotype_TRUTH",
-        "is_synthetic",
-        "simulator_seed",
+        RECORD_STATUS,
+        "template_seed",
     ]
     behavior = (
         pd.DataFrame(behavior_rows)[behavior_columns]
@@ -386,9 +391,9 @@ def generate_dataset(
     validate_dataset(lfp, outcomes, behavior)
 
     manifest = {
-        "dataset_id": "synthetic_larval_zebrafish_tbi_4_6dpf_v1",
-        "is_synthetic": True,
-        "simulator_seed": seed,
+        "dataset_id": "larval_zebrafish_tbi_4_6dpf_template_v1",
+        "data_status": PLACEHOLDER_STATUS,
+        "template_seed": seed,
         "n_per_arm": n_per_arm,
         "n_fish": int(len(outcomes)),
         "n_lfp_sessions": int(len(lfp)),
@@ -401,15 +406,16 @@ def generate_dataset(
             "required."
         ),
         "dose_index_definition": (
-            f"{DOSE_INDEX}=synthetic measured peak kPa multiplied by hit "
+            f"{DOSE_INDEX}=placeholder peak kPa multiplied by hit "
             "count; units are kPa-hits and it is not a measured pressure "
             "integral."
         ),
         "source_urls": [LOCSKAI_URL, EIMON_URL, DLC_URL, DLC_PROTOCOL_URL],
-        "critical_caveat": (
-            "The papers do not report repeated daily LFP from the same TBI larvae "
-            "at 4-6 dpf. This longitudinal schedule, all numerical emissions, the "
-            "195 kPa center, and all DeepLabCut values are simulator assumptions."
+        "replacement_notice": (
+            "The committed rows are deterministically generated synthetic "
+            "placeholders. The cited papers do not report repeated daily LFP from "
+            "the same TBI larvae at 4-6 dpf. Do not mark a row analysis_ready until "
+            "its values have been replaced with measured observations."
         ),
     }
     return lfp, outcomes, behavior, manifest
@@ -427,16 +433,26 @@ def write_dataset(
     output_dir: Path | str = DATA_DIR,
     seed: int = SEED,
     n_per_arm: int = 60,
+    *,
+    force: bool = False,
 ) -> dict:
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    lfp, outcomes, behavior, manifest = generate_dataset(seed=seed, n_per_arm=n_per_arm)
-
     paths = {
         "lfp_timeseries": output_dir / LFP_CSV.name,
         "fish_outcomes": output_dir / OUTCOMES_CSV.name,
         "dlc_behavior": output_dir / DLC_CSV.name,
     }
+    manifest_path = output_dir / "tbi_4_6dpf_dataset_manifest.json"
+    existing = [path for path in [*paths.values(), manifest_path] if path.exists()]
+    if existing and not force:
+        names = ", ".join(path.name for path in existing)
+        raise FileExistsError(
+            f"Refusing to overwrite existing template files: {names}. "
+            "Pass force=True or --force only after backing up measured records."
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lfp, outcomes, behavior, manifest = generate_dataset(seed=seed, n_per_arm=n_per_arm)
     lfp.to_csv(paths["lfp_timeseries"], index=False, lineterminator="\n")
     outcomes.to_csv(paths["fish_outcomes"], index=False, lineterminator="\n")
     behavior.to_csv(paths["dlc_behavior"], index=False, lineterminator="\n")
@@ -444,7 +460,6 @@ def write_dataset(
         key: {"path": path.name, "sha256": _sha256(path)}
         for key, path in paths.items()
     }
-    manifest_path = output_dir / "tbi_4_6dpf_dataset_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
@@ -454,12 +469,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--n-per-arm", type=int, default=60)
     parser.add_argument("--output-dir", type=Path, default=DATA_DIR)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing template after you have backed it up.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    manifest = write_dataset(args.output_dir, seed=args.seed, n_per_arm=args.n_per_arm)
+    manifest = write_dataset(
+        args.output_dir,
+        seed=args.seed,
+        n_per_arm=args.n_per_arm,
+        force=args.force,
+    )
     print(
         f"Wrote {manifest['n_fish']} fish and {manifest['n_lfp_sessions']} "
         f"LFP sessions to {args.output_dir}"

@@ -1,10 +1,53 @@
 {
-  "benchmark_type": "synthetic_only",
+  "benchmark_type": "synthetic_placeholder_demo",
   "seed": 42,
+  "run_config": {
+    "test_fraction": 0.3,
+    "candidate_states": [
+      2,
+      3,
+      4
+    ],
+    "restarts": 3,
+    "cv_folds": 3,
+    "bootstrap_iterations": 1000,
+    "allow_placeholder_data": true
+  },
+  "software_versions": {
+    "python": "3.12.13",
+    "implementation": "CPython",
+    "platform": "win32",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "scipy": "1.18.0",
+    "scikit_learn": "1.9.0",
+    "matplotlib": "3.11.1"
+  },
+  "input_data": {
+    "normalized_table_sha256": {
+      "lfp": "7787ff9abce20ad0f8349be0cc1f2bf9b8c6acad203a674cbc1dbb1a44d40b61",
+      "outcomes": "076bba65deafd4b513a4c56b8e0e3f1fbd6744521f9cfeecc105a961dffb0e1b",
+      "behavior": "e3e866bf2e0aed5cf8d1f18d2e183de07b1418c014af93c42da5cdae479f4dff"
+    },
+    "record_status_counts": {
+      "lfp": {
+        "placeholder_pending_replacement": 706
+      },
+      "outcomes": {
+        "placeholder_pending_replacement": 240
+      },
+      "behavior": {
+        "placeholder_pending_replacement": 706
+      }
+    },
+    "note": "Hashes cover normalized in-memory CSV serialization. The committed manifest describes the initialized seed-42 template."
+  },
   "split": {
     "n_train_fish": 168,
     "n_test_fish": 72,
-    "fish_overlap": 0
+    "fish_overlap": 0,
+    "n_train_model_fish_with_4dpf_baseline": 160,
+    "n_train_model_sessions": 456
   },
   "dataset_qc": {
     "n_fish": 240,
@@ -34,7 +77,9 @@
         -3.0796823465919188,
         -3.0048617222674383
       ],
-      "n_parameters": 31
+      "n_parameters": 31,
+      "converged": true,
+      "iterations": 5
     },
     "3": {
       "bic": 1134.488726380163,
@@ -47,7 +92,9 @@
         -1.1318531526169289,
         -0.9979940801128648
       ],
-      "n_parameters": 50
+      "n_parameters": 50,
+      "converged": true,
+      "iterations": 4
     },
     "4": {
       "bic": 706.1880494449863,
@@ -60,7 +107,9 @@
         -0.8906075915062687,
         -0.4361772968972478
       ],
-      "n_parameters": 71
+      "n_parameters": 71,
+      "converged": true,
+      "iterations": 20
     }
   },
   "severity_alignment": {
@@ -129,9 +178,13 @@
     "forecast_method": "Causal filtered probability at the last contiguous QC-passing 4-5 dpf observation, propagated to 6 dpf with the learned ordered microstate transition matrix.",
     "n_test_fish": 68,
     "n_positive": 12,
-    "roc_auc": 0.8638392857142856,
-    "average_precision": 0.48862839970296107,
-    "brier_score": 0.10436312672636926,
+    "endpoint_prevalence": 0.17647058823529413,
+    "roc_auc": 0.8467261904761904,
+    "average_precision": 0.47882625272331153,
+    "average_precision_baseline": 0.17647058823529413,
+    "brier_score": 0.10436312407074999,
+    "brier_constant_prevalence_baseline": 0.1453287197231834,
+    "brier_skill_score_vs_constant_prevalence": 0.28188231294174415,
     "threshold": 0.5,
     "sensitivity": 0.4166666666666667,
     "specificity": 0.9464285714285714,
@@ -142,17 +195,56 @@
       "false_negative": 7
     },
     "roc_auc_95ci": [
-      0.7576941278654459,
-      0.9449516158864676
+      0.7167803030303029,
+      0.944830408456486
     ],
     "average_precision_95ci": [
-      0.26396344424513934,
-      0.7432024820417678
-    ]
+      0.24813489145658263,
+      0.7250048835323603
+    ],
+    "bootstrap_requested_replicates": 1000,
+    "bootstrap_valid_replicates": 1000,
+    "forecast_score_precision_decimals": 6,
+    "n_unique_forecast_scores": 5,
+    "numerical_precision_sensitivity": {
+      "unrounded_roc_auc": 0.8638392857142856,
+      "unrounded_average_precision": 0.48862839970296107,
+      "max_absolute_rounding_delta": 4.991430525708163e-07,
+      "note": "Primary metrics use forecast probabilities rounded to six decimals so ties are operationally meaningful and metrics reproduce from the committed CSV."
+    },
+    "cohort_flow": {
+      "n_held_out_fish": 72,
+      "n_with_observed_dpf6_endpoint": 69,
+      "n_excluded_missing_dpf6_endpoint": 3,
+      "n_excluded_without_usable_4dpf_prefix": 1,
+      "n_forecast_eligible": 68,
+      "n_pose_style_check_eligible": 67
+    },
+    "causal_definition": "Causal means forward-only temporal filtering: each state probability uses only its current and prior LFP observations. It does not mean causal-effect inference; the split is retrospective and endpoint-stratified."
   },
   "dynamics": {
-    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.3426504089669022,
-    "dose_index_vs_dpf6_forecast_risk_p": 0.004232145804443725,
+    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.3288102948874864,
+    "dose_index_vs_dpf6_forecast_risk_p": 0.006186240124994581,
+    "injured_only_dose_risk_spearman_rho": 0.18121773073433892,
+    "injured_only_dose_risk_spearman_p": 0.20786756447289118,
+    "within_injury_arm_dose_risk": {
+      "tbi_high": {
+        "n_fish": 15,
+        "rho": 0.08835703572161765,
+        "p": 0.7541815958406908
+      },
+      "tbi_low": {
+        "n_fish": 18,
+        "rho": -0.12519334891679787,
+        "p": 0.6206188431697539
+      },
+      "tbi_moderate": {
+        "n_fish": 17,
+        "rho": -0.15919288819173205,
+        "p": 0.541672400853755
+      }
+    },
+    "dose_association_note": "The pooled value is a synthetic arm-gradient check, not an individual or within-arm dose-response estimate.",
     "group_transition_summary": [
       {
         "group": "sham",
@@ -186,11 +278,45 @@
   },
   "behavior_validation": {
     "n_fish": 67,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.6275078959452194,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 1.325934346303884e-08,
-    "dose_batch_adjusted_partial_spearman_rho": 0.47621518078058916,
-    "dose_batch_adjusted_partial_spearman_p": 4.634147637784538e-05,
-    "note": "DeepLabCut-like values are simulated validation data; severe-dose locomotor speed is intentionally non-monotonic."
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.6052686238300399,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 5.772773270286148e-08,
+    "dose_batch_adjusted_partial_spearman_rho": 0.48021400775999185,
+    "dose_batch_adjusted_partial_spearman_p": 3.9150476346535644e-05,
+    "note": "Generated pose-style values share the planted latent-state generator with LFP features. They are withheld from HMM inputs but are not an independent validation set; severe-arm locomotor speed is intentionally non-monotonic."
+  },
+  "selected_model_fit": {
+    "converged": true,
+    "iterations": 20,
+    "log_likelihood": -135.74552999560794,
+    "log_likelihood_history": [
+      -2583.378149181703,
+      -813.0808851035341,
+      -399.62368183753244,
+      -362.90656232408185,
+      -332.25510652749097,
+      -310.59187643589604,
+      -242.26680889851946,
+      -209.48586315989695,
+      -203.3323248637851,
+      -198.94590730228688,
+      -195.32435507930717,
+      -191.81177650741398,
+      -187.74709540521326,
+      -182.29361975553564,
+      -174.47266873808732,
+      -163.37338407042554,
+      -147.64493927964378,
+      -136.25624472787945,
+      -135.74562862454508,
+      -135.74552999560794
+    ],
+    "n_restarts": 3,
+    "max_iterations": 160,
+    "tolerance": 1e-05,
+    "minimum_covariance": 0.001,
+    "variance_regularization": 0.05,
+    "start_pseudocount": 0.1,
+    "transition_pseudocount": 0.25
   },
   "ordered_start_probabilities": [
     0.44326624359745986,
@@ -262,6 +388,44 @@
       -1.4903079444986607
     ]
   ],
+  "ordered_emission_variances_robust_scaled": [
+    [
+      0.25102632669912683,
+      0.052186421668314185,
+      0.11077357042715213,
+      0.04156829747751886,
+      0.04341113767478253,
+      0.001,
+      0.029870512347693175
+    ],
+    [
+      0.15471644488653677,
+      0.050566633055222826,
+      0.09213468767170639,
+      0.030917906327761556,
+      0.0416023196398698,
+      0.002776597654059069,
+      0.03190226607181515
+    ],
+    [
+      0.22602776755871606,
+      0.05577627663232892,
+      0.12075352623710936,
+      0.04730240503561306,
+      0.04467406127386095,
+      0.08831241525519158,
+      0.046994140999190255
+    ],
+    [
+      0.2577964844069635,
+      0.049824422226014096,
+      0.1019159475150265,
+      0.05105223639236096,
+      0.040289410781123754,
+      0.08743884848826622,
+      0.03665108097378391
+    ]
+  ],
   "features": [
     "lfp_mean_uv",
     "lfp_variance_uv2",
@@ -293,5 +457,6 @@
       0.33982500000000004
     ]
   },
-  "critical_caveat": "All data and endpoints are synthetic. Daily repeated 4-6 dpf LFP after 3 dpf TBI is a hypothetical benchmark protocol."
+  "replacement_notice": "Current committed data are deterministically generated synthetic placeholders. Daily repeated 4-6 dpf LFP after 3 dpf TBI is a demonstration protocol, not an experimental result. Raw LFP and pose feature extraction are outside this repository's scope.",
+  "experimental_unit_notice": "The current synthetic split and bootstrap operate at the fish level. A measured study with multiple larvae per injury event must add event/clutch identifiers and use grouped inference."
 }

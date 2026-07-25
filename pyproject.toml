@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "latent-tbi-markov"
-version = "1.0.0"
-description = "Synthetic larval-zebrafish TBI electrophysiology benchmark using hidden Markov modeling"
+version = "1.1.0"
+description = "Synthetic larval-zebrafish TBI latent-state forecasting benchmark using hidden Markov models"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -36,13 +36,19 @@ dependencies = [
   "scipy>=1.13",
 ]
 
+[project.urls]
+Homepage = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling"
+Repository = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling"
+Issues = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling/issues"
+Documentation = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling/tree/main/docs"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
 ]
 
 [project.scripts]
-tbi-generate = "tbi_markov.synthetic:main"
+tbi-initialize = "tbi_markov.template_data:main"
 tbi-analyze = "tbi_markov.modeling:main"
 tbi-pipeline = "tbi_markov.pipeline:main"
 

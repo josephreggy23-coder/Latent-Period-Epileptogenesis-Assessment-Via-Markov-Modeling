@@ -1,4 +1,4 @@
-"""Run the complete deterministic benchmark with ``python -m tbi_markov``."""
+"""Run the explicitly confirmed synthetic-template reset and demonstration."""
 
 from .pipeline import main
 

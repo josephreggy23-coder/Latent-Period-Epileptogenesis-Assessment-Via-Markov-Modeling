@@ -1,68 +1,99 @@
-# Synthetic larval-zebrafish TBI Markov-model results
+# Synthetic larval-zebrafish TBI Markov benchmark
 
-> **Benchmark only.** Every observation, state, endpoint, and DeepLabCut-like
-> metric is synthetic. These results are not evidence of post-traumatic
-> epilepsy, treatment efficacy, or feasibility of repeated invasive recordings.
+> **Synthetic demonstration only.** No committed row represents an experimental
+> animal. Every current observation, state, endpoint, and pose-style behavior
+> value is generated. These results are not evidence of post-traumatic epilepsy,
+> treatment efficacy, or feasibility of repeated invasive recordings.
 
 ## Run scope
 
-- 240 simulated larvae across sham and 3/5/7-drop TBI arms
-- TBI at 3 dpf; LFP/behavior sessions at 4-6 dpf
-- LFP sessions failing the prespecified electrode-shift/noise QC remain in the
-  dataset but are excluded from modeling; a QC gap terminates the usable
-  4 dpf-based prefix rather than being compressed into one transition
-- positive heavy-tailed features receive `log1p`; robust preprocessing is fit
-  on training fish only; the split is at the fish level
+- 240 generated fish across sham and 3/5/7-hit arms
+- 706 generated sessions; 683
+  passed QC (96.7%)
+- 662 contiguous model sessions from
+  231 fish with a usable 4 dpf baseline
+- 168 train / 72 test fish, with
+  0 overlapping fish
+- resistance-change and noise QC failures remain auditable but are excluded;
+  a later gap terminates the usable prefix
+- positive heavy-tailed features receive `log1p`; robust preprocessing is
+  fitted on training fish only
 - selected **K=4** by lowest train-only BIC (706.2);
   train-only CV log likelihood/session -0.552
-- the K statistical components are severity ordered without truth labels, then
-  adjacent components are collapsed to the simulator's three validation
-  macrostates at the two largest prespecified-score gaps
 
-## Held-out latent-state recovery
+K=4 is the upper boundary of the tested candidate set
+[2, 3, 4]; it does not establish 4 biological states. Adjacent
+severity-ordered microstates are collapsed to three planted validation
+macrostates without consulting truth labels.
+
+## Held-out planted-state self-check
 
 - balanced accuracy: **1.000**
 - macro F1: **1.000**
 - adjusted Rand index: **1.000**
+- scored sessions: **206**
 
-Per-session planted states are used only in this scoring step. The planted 6
-dpf endpoint is used to outcome-stratify the fish-level split and to score the
-forecast; neither form of truth enters HMM features or fitting.
+Perfect recovery is an expected self-check for deliberately separated synthetic
+emissions, not evidence that biological states have been identified.
 
-## Causal early prediction
+## Forward-only early forecast
 
-Only an uninterrupted, QC-passing 4-5 dpf LFP prefix was used. Its final
-filtered state distribution was propagated through the learned transition
-matrix to predict the separate planted 6 dpf high-burden endpoint:
+Each held-out fish's forecast used only its uninterrupted, QC-passing 4-5 dpf
+LFP prefix. The final filtered state distribution was propagated through the
+learned transition matrix to predict the separate planted 6 dpf high-burden
+endpoint. No target-fish 6 dpf LFP or behavior entered its forecast;
+training-fish 4-6 dpf sessions were used to estimate the HMM emissions and
+transition dynamics.
 
 - held-out fish: **68** (12 positive)
-- ROC-AUC: **0.864** (bootstrap 95% CI
-  0.758-0.945)
-- average precision: **0.489**
-- Brier score: **0.104**
+- ROC-AUC: **0.847** (bootstrap 95% CI
+  0.717-0.945)
+- average precision: **0.479** versus prevalence
+  baseline 0.176
+- Brier score: **0.104** versus constant-prevalence
+  baseline 0.145
 - sensitivity/specificity at probability 0.5:
   **0.417/0.946**
+- confusion counts: 5 TP,
+  53 TN,
+  3 FP,
+  7 FN
+- operational score levels: **5** at
+  6-decimal precision
+
+Primary rank metrics use the same rounded probabilities committed to CSV so
+ties are meaningful and results reproduce after serialization. For numerical
+sensitivity, the unrounded AUC was
+0.864.
+"Causal" in the implementation means forward-only temporal filtering, not
+causal-effect inference; the split is retrospective and endpoint-stratified.
 
 ## Dose/dynamics and behavior checks
 
-- synthetic dose index vs DPF6 forecast risk: Spearman
-  **rho=0.343**
-- DPF6 forecast risk vs DPF6 synthetic DLC abnormality: Spearman
-  **rho=0.628**
-- after synthetic dose/batch adjustment: partial Spearman
-  **rho=0.476**
+- pooled synthetic arm-gradient check: Spearman
+  **rho=0.329**
+- injured-fish-only dose/risk check: Spearman
+  **rho=0.181**
+- forecast risk vs generated 6 dpf behavior abnormality: Spearman
+  **rho=0.605**
+- dose/batch-adjusted generated-behavior check: partial Spearman
+  **rho=0.480**
 
-Locomotor speed is not treated as a severity ruler: the simulator permits
-hyperactivity at moderate injury and stunned/inactive behavior at high injury.
+Generated behavior is withheld from HMM inputs but shares the planted latent
+generator, so this is concordance rather than independent validation. The pooled
+dose value is an arm-gradient check, not a within-arm dose-response estimate.
 
 ## Method boundaries
 
 - [Locskai et al.](https://doi.org/10.1242/bio.060601) motivates the
   blast-pressure syringe insult and repeated-hit dose axis.
 - [Eimon et al.](https://doi.org/10.1038/s41467-017-02404-4) motivates LFP
-  acquisition, QC, overlapping-window higher moments, and ICA complexity.
+  acquisition, resistance-change/noise QC, overlapping-window higher moments,
+  and ICA complexity.
 - [Mathis et al.](https://doi.org/10.1038/s41593-018-0209-y) and
   [Nath et al.](https://doi.org/10.1038/s41596-019-0176-0) motivate the
-  DeepLabCut validation workflow.
+  pose-summary interface.
 
 Neither source paper reports this exact 4-6 dpf repeated same-fish LFP design.
+Raw LFP feature extraction, pose tracking, injury-event clustering, and model
+uncertainty from refitting are outside the current benchmark.

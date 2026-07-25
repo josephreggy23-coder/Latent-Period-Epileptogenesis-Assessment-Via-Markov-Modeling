@@ -1,14 +1,20 @@
-"""Fit and evaluate the TBI-only hidden Markov model.
+"""Fit and evaluate the synthetic TBI hidden Markov benchmark.
 
-The primary prospective-style test is intentionally causal: LFP observations
-through 5 dpf predict a planted endpoint at 6 dpf.  No 6 dpf LFP, behavior,
-injury dose, group, or truth field enters that early-risk calculation.
+The primary temporal test uses forward-only filtering: LFP observations through
+5 dpf predict a planted endpoint at 6 dpf. No held-out target-fish 6 dpf LFP,
+behavior, injury dose, group, or truth field enters that early-risk
+calculation. Training-fish 4–6 dpf sessions estimate the HMM dynamics. This is
+not causal-effect inference.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import math
+import platform
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -41,16 +47,20 @@ from .common import (
     LFP_CSV,
     OBSERVATION_DPF,
     OUTCOMES_CSV,
+    PLACEHOLDER_STATUS,
+    RECORD_STATUS,
     RESULTS_DIR,
     PREDICTION_CUTOFF_DPF,
     SEED,
     TARGET,
     TARGET_DPF,
     TRUTH_STATE,
+    assert_analysis_ready,
     build_sequences,
     fit_robust_scaler,
     load_dataset,
     qc_sessions,
+    validate_dataset,
 )
 from .hmm import DiagonalGaussianHMM
 
@@ -63,6 +73,19 @@ RISING_FEATURES = (
     "lfp_seizure_event_rate_per_h",
 )
 FALLING_FEATURES = ("lfp_ica_complexity",)
+FORECAST_PROBABILITY_DECIMALS = 6
+GROUP_LABELS = {
+    "sham": "Sham",
+    "tbi_low": "3 hits",
+    "tbi_moderate": "5 hits",
+    "tbi_high": "7 hits",
+}
+GROUP_COLORS = {
+    "sham": "#64748B",
+    "tbi_low": "#0EA5E9",
+    "tbi_moderate": "#F59E0B",
+    "tbi_high": "#DC2626",
+}
 
 
 def fish_level_split(
@@ -149,7 +172,7 @@ def macrostate_mapping(
     """Collapse adjacent statistical components into interpretable severity states.
 
     Model-order selection is free to choose more Gaussian components than the
-    simulator's three planted severity categories.  The collapse is based only
+    template's three planted severity categories.  The collapse is based only
     on the largest gaps in the prespecified LFP severity score; truth labels are
     not consulted.
     """
@@ -262,6 +285,8 @@ def select_state_count(
             "cv_standard_error": float(cv_sd / math.sqrt(len(fold_loglik))),
             "fold_log_likelihoods": [float(value) for value in fold_loglik],
             "n_parameters": int(n_parameters),
+            "converged": bool(full_model.converged_),
+            "iterations": int(full_model.n_iter_),
         }
 
     selected = min(results, key=lambda value: results[value]["bic"])
@@ -424,6 +449,21 @@ def early_prediction(
         raise RuntimeError("Early prediction used a post-cutoff LFP observation.")
     if (predictions["forecast_steps_to_dpf6"] <= 0).any():
         raise RuntimeError("Early prediction did not preserve a future forecast horizon.")
+
+    # Synthetic emissions yield almost one-hot posteriors. Microscopic
+    # floating-point tails should not create an artificial ordering among
+    # operationally identical risks, and all reported metrics must reproduce
+    # exactly from the serialized CSV. Six decimals is therefore the
+    # prespecified evaluation precision.
+    raw_score = predictions["forecast_risk_dpf6"].to_numpy(float, copy=True)
+    predictions["filtered_high_state_probability_last_observation"] = (
+        predictions["filtered_high_state_probability_last_observation"].round(
+            FORECAST_PROBABILITY_DECIMALS
+        )
+    )
+    predictions["forecast_risk_dpf6"] = predictions["forecast_risk_dpf6"].round(
+        FORECAST_PROBABILITY_DECIMALS
+    )
     y = predictions[TARGET].to_numpy(int)
     score = predictions["forecast_risk_dpf6"].to_numpy(float)
     if len(np.unique(y)) < 2:
@@ -448,6 +488,9 @@ def early_prediction(
         auc_boot.append(float(roc_auc_score(y[index], score[index])))
         ap_boot.append(float(average_precision_score(y[index], score[index])))
 
+    prevalence = float(y.mean())
+    brier_baseline = float(prevalence * (1.0 - prevalence))
+    brier = float(brier_score_loss(y, score))
     metrics = {
         "prediction_cutoff_dpf": PREDICTION_CUTOFF_DPF,
         "target_dpf": TARGET_DPF,
@@ -458,9 +501,15 @@ def early_prediction(
         ),
         "n_test_fish": int(len(predictions)),
         "n_positive": int(y.sum()),
+        "endpoint_prevalence": prevalence,
         "roc_auc": float(roc_auc_score(y, score)),
         "average_precision": float(average_precision_score(y, score)),
-        "brier_score": float(brier_score_loss(y, score)),
+        "average_precision_baseline": prevalence,
+        "brier_score": brier,
+        "brier_constant_prevalence_baseline": brier_baseline,
+        "brier_skill_score_vs_constant_prevalence": float(
+            1.0 - brier / brier_baseline
+        ),
         "threshold": threshold,
         "sensitivity": float(sensitivity),
         "specificity": float(specificity),
@@ -478,8 +527,31 @@ def early_prediction(
             float(np.percentile(ap_boot, 2.5)),
             float(np.percentile(ap_boot, 97.5)),
         ],
+        "bootstrap_requested_replicates": int(bootstrap_iterations),
+        "bootstrap_valid_replicates": int(len(auc_boot)),
+        "forecast_score_precision_decimals": FORECAST_PROBABILITY_DECIMALS,
+        "n_unique_forecast_scores": int(predictions["forecast_risk_dpf6"].nunique()),
+        "numerical_precision_sensitivity": {
+            "unrounded_roc_auc": float(roc_auc_score(y, raw_score)),
+            "unrounded_average_precision": float(
+                average_precision_score(y, raw_score)
+            ),
+            "max_absolute_rounding_delta": float(
+                np.max(np.abs(raw_score - score))
+            ),
+            "note": (
+                "Primary metrics use forecast probabilities rounded to six "
+                "decimals so ties are operationally meaningful and metrics "
+                "reproduce from the committed CSV."
+            ),
+        },
     }
     return metrics, predictions
+
+
+def _finite_or_none(value: float) -> float | None:
+    numeric = float(value)
+    return numeric if np.isfinite(numeric) else None
 
 
 def dynamics_metrics(
@@ -494,6 +566,11 @@ def dynamics_metrics(
             "dpf": int(dpf),
             "n_sessions": int(len(frame)),
             "mean_expected_state": float(frame["expected_state"].mean()),
+            "sem_expected_state": float(
+                frame["expected_state"].std(ddof=1) / math.sqrt(len(frame))
+            )
+            if len(frame) > 1
+            else 0.0,
         }
         for state in range(n_states):
             row[f"fraction_state_{state}"] = float(
@@ -530,9 +607,34 @@ def dynamics_metrics(
         early_predictions[DOSE_INDEX],
         early_predictions["forecast_risk_dpf6"],
     )
+    injured = early_predictions.loc[early_predictions["group"] != "sham"]
+    injured_rho, injured_p = spearmanr(
+        injured[DOSE_INDEX],
+        injured["forecast_risk_dpf6"],
+    )
+    within_group = {}
+    for group, frame in injured.groupby("group", sort=True):
+        rho, p_value = spearmanr(
+            frame[DOSE_INDEX],
+            frame["forecast_risk_dpf6"],
+        )
+        within_group[group] = {
+            "n_fish": int(len(frame)),
+            "rho": _finite_or_none(rho),
+            "p": _finite_or_none(p_value),
+        }
     metrics = {
-        "dose_index_vs_dpf6_forecast_risk_spearman_rho": float(pressure_rho),
-        "dose_index_vs_dpf6_forecast_risk_p": float(pressure_p),
+        "dose_index_vs_dpf6_forecast_risk_spearman_rho": _finite_or_none(
+            pressure_rho
+        ),
+        "dose_index_vs_dpf6_forecast_risk_p": _finite_or_none(pressure_p),
+        "injured_only_dose_risk_spearman_rho": _finite_or_none(injured_rho),
+        "injured_only_dose_risk_spearman_p": _finite_or_none(injured_p),
+        "within_injury_arm_dose_risk": within_group,
+        "dose_association_note": (
+            "The pooled value is a synthetic arm-gradient check, not an "
+            "individual or within-arm dose-response estimate."
+        ),
         "group_transition_summary": transitions.to_dict("records"),
     }
     return metrics, occupancy, transitions
@@ -584,13 +686,19 @@ def behavior_validation(
     partial_rho, partial_p = spearmanr(x_residual, y_residual)
     metrics = {
         "n_fish": int(len(merged)),
-        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": float(rho),
-        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": float(p_value),
-        "dose_batch_adjusted_partial_spearman_rho": float(partial_rho),
-        "dose_batch_adjusted_partial_spearman_p": float(partial_p),
+        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": (
+            _finite_or_none(rho)
+        ),
+        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": _finite_or_none(
+            p_value
+        ),
+        "dose_batch_adjusted_partial_spearman_rho": _finite_or_none(partial_rho),
+        "dose_batch_adjusted_partial_spearman_p": _finite_or_none(partial_p),
         "note": (
-            "DeepLabCut-like values are simulated validation data; severe-dose "
-            "locomotor speed is intentionally non-monotonic."
+            "Generated pose-style values share the planted latent-state "
+            "generator with LFP features. They are withheld from HMM inputs "
+            "but are not an independent validation set; severe-arm locomotor "
+            "speed is intentionally non-monotonic."
         ),
     }
     return metrics, merged
@@ -605,11 +713,58 @@ def _json_ready(value):
         return value.tolist()
     if isinstance(value, (np.integer,)):
         return int(value)
-    if isinstance(value, (np.floating,)):
-        return float(value)
+    if isinstance(value, (float, np.floating)):
+        numeric = float(value)
+        return numeric if np.isfinite(numeric) else None
     if isinstance(value, (np.bool_,)):
         return bool(value)
     return value
+
+
+def _normalized_frame_sha256(frame: pd.DataFrame) -> str:
+    payload = frame.to_csv(index=False, lineterminator="\n").encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _software_versions() -> dict[str, str]:
+    distributions = {
+        "numpy": "numpy",
+        "pandas": "pandas",
+        "scipy": "scipy",
+        "scikit_learn": "scikit-learn",
+        "matplotlib": "matplotlib",
+    }
+    return {
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "platform": sys.platform,
+        **{
+            label: importlib.metadata.version(distribution)
+            for label, distribution in distributions.items()
+        },
+    }
+
+
+def _style_axis(axis: plt.Axes, *, grid_axis: str | None = "y") -> None:
+    axis.set_facecolor("#FFFFFF")
+    axis.spines["top"].set_visible(False)
+    axis.spines["right"].set_visible(False)
+    axis.spines["left"].set_color("#CBD5E1")
+    axis.spines["bottom"].set_color("#CBD5E1")
+    axis.tick_params(colors="#334155")
+    if grid_axis:
+        axis.grid(
+            axis=grid_axis,
+            color="#E2E8F0",
+            linewidth=0.8,
+            alpha=0.85,
+        )
+        axis.set_axisbelow(True)
+
+
+def _save_figure(fig: plt.Figure, path: Path) -> None:
+    fig.savefig(path, dpi=180, bbox_inches="tight", facecolor="#FFFFFF")
+    plt.close(fig)
 
 
 def make_figures(
@@ -626,7 +781,15 @@ def make_figures(
     states = sorted(selection)
 
     fig, axis_left = plt.subplots(figsize=(7.2, 4.6))
-    axis_left.plot(states, [selection[k]["bic"] for k in states], "o-", color="#0F766E")
+    _style_axis(axis_left)
+    axis_left.plot(
+        states,
+        [selection[k]["bic"] for k in states],
+        "o-",
+        color="#0F766E",
+        linewidth=2.2,
+        markersize=7,
+    )
     axis_left.set_xlabel("Hidden states (K)")
     axis_left.set_ylabel("Train-only BIC", color="#0F766E")
     axis_left.set_xticks(states)
@@ -637,63 +800,122 @@ def make_figures(
         yerr=[selection[k]["cv_standard_error"] for k in states],
         fmt="s-",
         color="#C2410C",
-        capsize=3,
+        capsize=4,
+        linewidth=2.0,
+        markersize=6,
     )
     axis_right.set_ylabel("Train-only CV log likelihood/session", color="#C2410C")
-    axis_left.set_title("TBI HMM model-order selection")
+    axis_right.spines["top"].set_visible(False)
+    axis_right.spines["left"].set_visible(False)
+    axis_right.spines["right"].set_color("#CBD5E1")
+    axis_right.tick_params(axis="y", colors="#C2410C")
+    axis_left.set_title(
+        "HMM model-order comparison",
+        loc="left",
+        fontweight="bold",
+        color="#0F172A",
+        pad=30,
+    )
+    axis_left.text(
+        0,
+        1.01,
+        "Training fish only • K=4 is the tested upper boundary",
+        transform=axis_left.transAxes,
+        color="#64748B",
+        fontsize=9,
+    )
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_model_selection.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_model_selection.png")
 
     matrix = np.asarray(recovery["confusion_matrix"])
     fig, axis = plt.subplots(figsize=(5.2, 4.6))
+    _style_axis(axis, grid_axis=None)
     image = axis.imshow(matrix, cmap="Blues")
     for row in range(matrix.shape[0]):
         for column in range(matrix.shape[1]):
-            axis.text(column, row, str(matrix[row, column]), ha="center", va="center")
-    axis.set_xlabel("Predicted severity state")
-    axis.set_ylabel("Planted state (validation only)")
+            axis.text(
+                column,
+                row,
+                str(matrix[row, column]),
+                ha="center",
+                va="center",
+                color="#FFFFFF" if matrix[row, column] > matrix.max() / 2 else "#0F172A",
+                fontweight="bold",
+            )
+    axis.set_xlabel("Predicted validation macrostate")
+    axis.set_ylabel("Planted validation macrostate")
     axis.set_xticks(range(len(recovery["labels"])), recovery["labels"])
     axis.set_yticks(range(len(recovery["labels"])), recovery["labels"])
-    axis.set_title("Held-out state recovery")
+    axis.set_title(
+        "Held-out planted-state self-check",
+        loc="left",
+        fontweight="bold",
+        color="#0F172A",
+    )
     fig.colorbar(image, ax=axis, shrink=0.8)
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_state_confusion.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_state_confusion.png")
 
     y = early_predictions[TARGET].to_numpy(int)
     risk = early_predictions["forecast_risk_dpf6"].to_numpy(float)
     fpr, tpr, _ = roc_curve(y, risk)
     fig, axis = plt.subplots(figsize=(5.8, 4.8))
+    _style_axis(axis, grid_axis="both")
     axis.plot(fpr, tpr, lw=2.2, color="#0F766E", label=f"AUC = {early['roc_auc']:.3f}")
     axis.plot([0, 1], [0, 1], "--", color="#64748B")
     axis.set_xlabel("False-positive rate")
     axis.set_ylabel("True-positive rate")
-    axis.set_title("4-5 dpf LFP → 6 dpf planted endpoint")
+    axis.set_title(
+        "Forward-only 4–5 dpf LFP forecast",
+        loc="left",
+        fontweight="bold",
+        color="#0F172A",
+        pad=30,
+    )
+    axis.text(
+        0,
+        1.01,
+        "Synthetic 6 dpf endpoint • score precision: 6 decimals",
+        transform=axis.transAxes,
+        color="#64748B",
+        fontsize=9,
+    )
     axis.legend(loc="lower right")
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_early_prediction_roc.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_early_prediction_roc.png")
 
     fig, axis = plt.subplots(figsize=(8.2, 5.0))
+    _style_axis(axis)
     for group in GROUPS:
         frame = occupancy.loc[occupancy["group"] == group].sort_values("dpf")
-        axis.plot(
+        axis.errorbar(
             frame["dpf"],
             frame["mean_expected_state"],
-            "o-",
-            label=group,
+            yerr=frame["sem_expected_state"],
+            fmt="o-",
+            capsize=3,
+            linewidth=2.0,
+            markersize=6,
+            color=GROUP_COLORS[group],
+            label=GROUP_LABELS[group],
         )
     axis.set_xticks(OBSERVATION_DPF)
     axis.set_xlabel("dpf")
-    axis.set_ylabel("Mean filtered expected state (held-out fish)")
-    axis.set_title("Synthetic post-TBI electrophysiology trajectories")
+    axis.set_ylabel("Mean filtered validation macrostate ± SEM")
+    axis.set_ylim(-0.05, 2.05)
+    axis.set_yticks([0, 1, 2])
+    axis.set_title(
+        "Synthetic held-out state trajectories",
+        loc="left",
+        fontweight="bold",
+        color="#0F172A",
+    )
     axis.legend(frameon=False, ncol=2)
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_state_trajectories.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_state_trajectories.png")
 
     fig, axis = plt.subplots(figsize=(5.5, 4.8))
+    _style_axis(axis, grid_axis=None)
     image = axis.imshow(transition_matrix, cmap="YlGnBu", vmin=0, vmax=1)
     for row in range(transition_matrix.shape[0]):
         for column in range(transition_matrix.shape[1]):
@@ -703,16 +925,31 @@ def make_figures(
                 f"{transition_matrix[row, column]:.2f}",
                 ha="center",
                 va="center",
+                color=(
+                    "#FFFFFF"
+                    if transition_matrix[row, column] > 0.48
+                    else "#0F172A"
+                ),
+                fontweight="bold",
             )
-    axis.set_xlabel("To severity state")
-    axis.set_ylabel("From severity state")
-    axis.set_title("Pooled HMM transition matrix")
+    microstate_ticks = range(transition_matrix.shape[0])
+    axis.set_xticks(microstate_ticks, microstate_ticks)
+    axis.set_yticks(microstate_ticks, microstate_ticks)
+    axis.set_xlabel("To ordered microstate")
+    axis.set_ylabel("From ordered microstate")
+    axis.set_title(
+        "Ordered HMM microstate transitions",
+        loc="left",
+        fontweight="bold",
+        color="#0F172A",
+    )
     fig.colorbar(image, ax=axis, shrink=0.8)
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_transition_matrix.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_transition_matrix.png")
 
     fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.7))
+    for axis in axes:
+        _style_axis(axis)
     for group in GROUPS:
         frame = behavior.loc[behavior["group"] == group]
         axes[0].scatter(
@@ -720,24 +957,29 @@ def make_figures(
             frame["dlc_behavior_abnormality_index"],
             s=28,
             alpha=0.72,
-            label=group,
+            color=GROUP_COLORS[group],
+            label=GROUP_LABELS[group],
         )
         axes[1].scatter(
             frame["forecast_risk_dpf6"],
             frame["dlc_mean_speed_mm_s"],
             s=28,
             alpha=0.72,
+            color=GROUP_COLORS[group],
         )
     axes[0].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[0].set_ylabel("Synthetic DLC abnormality index at DPF6")
+    axes[0].set_ylabel("Generated behavior abnormality index at 6 dpf")
     axes[0].legend(frameon=False, fontsize=8)
     axes[1].set_xlabel("Markov-forecast DPF6 high-state probability")
-    axes[1].set_ylabel("Synthetic DLC mean speed at DPF6 (mm/s)")
+    axes[1].set_ylabel("Generated mean speed at 6 dpf (mm/s)")
     axes[1].set_title("Speed is intentionally non-monotonic")
-    fig.suptitle("DeepLabCut-style validation (synthetic only)")
+    fig.suptitle(
+        "Generated pose-style concordance check",
+        fontweight="bold",
+        color="#0F172A",
+    )
     fig.tight_layout()
-    fig.savefig(output_dir / "tbi_dlc_validation.png", dpi=160)
-    plt.close(fig)
+    _save_figure(fig, output_dir / "tbi_dlc_validation.png")
 
 
 def write_report(metrics: dict, output_path: Path) -> None:
@@ -747,75 +989,113 @@ def write_report(metrics: dict, output_path: Path) -> None:
     early = metrics["early_prediction"]
     dynamics = metrics["dynamics"]
     behavior = metrics["behavior_validation"]
+    dataset = metrics["dataset_qc"]
+    split = metrics["split"]
     selected_row = selection[str(selected)]
-    text = f"""# Synthetic larval-zebrafish TBI Markov-model results
+    candidates = metrics["run_config"]["candidate_states"]
 
-> **Benchmark only.** Every observation, state, endpoint, and DeepLabCut-like
-> metric is synthetic. These results are not evidence of post-traumatic
-> epilepsy, treatment efficacy, or feasibility of repeated invasive recordings.
+    def format_metric(value: float | None) -> str:
+        return "not estimable" if value is None else f"{value:.3f}"
+
+    text = f"""# Synthetic larval-zebrafish TBI Markov benchmark
+
+> **Synthetic demonstration only.** No committed row represents an experimental
+> animal. Every current observation, state, endpoint, and pose-style behavior
+> value is generated. These results are not evidence of post-traumatic epilepsy,
+> treatment efficacy, or feasibility of repeated invasive recordings.
 
 ## Run scope
 
-- 240 simulated larvae across sham and 3/5/7-drop TBI arms
-- TBI at 3 dpf; LFP/behavior sessions at 4-6 dpf
-- LFP sessions failing the prespecified electrode-shift/noise QC remain in the
-  dataset but are excluded from modeling; a QC gap terminates the usable
-  4 dpf-based prefix rather than being compressed into one transition
-- positive heavy-tailed features receive `log1p`; robust preprocessing is fit
-  on training fish only; the split is at the fish level
+- {dataset['n_fish']} generated fish across sham and 3/5/7-hit arms
+- {dataset['n_lfp_sessions']} generated sessions; {dataset['n_qc_pass_sessions']}
+  passed QC ({dataset['qc_pass_rate']:.1%})
+- {dataset['n_contiguous_model_sessions']} contiguous model sessions from
+  {dataset['n_model_fish_with_4dpf_baseline']} fish with a usable 4 dpf baseline
+- {split['n_train_fish']} train / {split['n_test_fish']} test fish, with
+  {split['fish_overlap']} overlapping fish
+- resistance-change and noise QC failures remain auditable but are excluded;
+  a later gap terminates the usable prefix
+- positive heavy-tailed features receive `log1p`; robust preprocessing is
+  fitted on training fish only
 - selected **K={selected}** by lowest train-only BIC ({selected_row['bic']:.1f});
   train-only CV log likelihood/session {selected_row['cv_log_likelihood_per_session']:.3f}
-- the K statistical components are severity ordered without truth labels, then
-  adjacent components are collapsed to the simulator's three validation
-  macrostates at the two largest prespecified-score gaps
 
-## Held-out latent-state recovery
+K={selected} is the upper boundary of the tested candidate set
+{candidates}; it does not establish {selected} biological states. Adjacent
+severity-ordered microstates are collapsed to three planted validation
+macrostates without consulting truth labels.
+
+## Held-out planted-state self-check
 
 - balanced accuracy: **{recovery['balanced_accuracy']:.3f}**
 - macro F1: **{recovery['macro_f1']:.3f}**
 - adjusted Rand index: **{recovery['adjusted_rand_index']:.3f}**
+- scored sessions: **{recovery['n_test_sessions']}**
 
-Per-session planted states are used only in this scoring step. The planted 6
-dpf endpoint is used to outcome-stratify the fish-level split and to score the
-forecast; neither form of truth enters HMM features or fitting.
+Perfect recovery is an expected self-check for deliberately separated synthetic
+emissions, not evidence that biological states have been identified.
 
-## Causal early prediction
+## Forward-only early forecast
 
-Only an uninterrupted, QC-passing 4-5 dpf LFP prefix was used. Its final
-filtered state distribution was propagated through the learned transition
-matrix to predict the separate planted 6 dpf high-burden endpoint:
+Each held-out fish's forecast used only its uninterrupted, QC-passing 4-5 dpf
+LFP prefix. The final filtered state distribution was propagated through the
+learned transition matrix to predict the separate planted 6 dpf high-burden
+endpoint. No target-fish 6 dpf LFP or behavior entered its forecast;
+training-fish 4-6 dpf sessions were used to estimate the HMM emissions and
+transition dynamics.
 
 - held-out fish: **{early['n_test_fish']}** ({early['n_positive']} positive)
 - ROC-AUC: **{early['roc_auc']:.3f}** (bootstrap 95% CI
   {early['roc_auc_95ci'][0]:.3f}-{early['roc_auc_95ci'][1]:.3f})
-- average precision: **{early['average_precision']:.3f}**
-- Brier score: **{early['brier_score']:.3f}**
+- average precision: **{early['average_precision']:.3f}** versus prevalence
+  baseline {early['average_precision_baseline']:.3f}
+- Brier score: **{early['brier_score']:.3f}** versus constant-prevalence
+  baseline {early['brier_constant_prevalence_baseline']:.3f}
 - sensitivity/specificity at probability 0.5:
   **{early['sensitivity']:.3f}/{early['specificity']:.3f}**
+- confusion counts: {early['confusion']['true_positive']} TP,
+  {early['confusion']['true_negative']} TN,
+  {early['confusion']['false_positive']} FP,
+  {early['confusion']['false_negative']} FN
+- operational score levels: **{early['n_unique_forecast_scores']}** at
+  {early['forecast_score_precision_decimals']}-decimal precision
+
+Primary rank metrics use the same rounded probabilities committed to CSV so
+ties are meaningful and results reproduce after serialization. For numerical
+sensitivity, the unrounded AUC was
+{early['numerical_precision_sensitivity']['unrounded_roc_auc']:.3f}.
+"Causal" in the implementation means forward-only temporal filtering, not
+causal-effect inference; the split is retrospective and endpoint-stratified.
 
 ## Dose/dynamics and behavior checks
 
-- synthetic dose index vs DPF6 forecast risk: Spearman
-  **rho={dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho']:.3f}**
-- DPF6 forecast risk vs DPF6 synthetic DLC abnormality: Spearman
-  **rho={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho']:.3f}**
-- after synthetic dose/batch adjustment: partial Spearman
-  **rho={behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}**
+- pooled synthetic arm-gradient check: Spearman
+  **rho={format_metric(dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho'])}**
+- injured-fish-only dose/risk check: Spearman
+  **rho={format_metric(dynamics['injured_only_dose_risk_spearman_rho'])}**
+- forecast risk vs generated 6 dpf behavior abnormality: Spearman
+  **rho={format_metric(behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho'])}**
+- dose/batch-adjusted generated-behavior check: partial Spearman
+  **rho={format_metric(behavior['dose_batch_adjusted_partial_spearman_rho'])}**
 
-Locomotor speed is not treated as a severity ruler: the simulator permits
-hyperactivity at moderate injury and stunned/inactive behavior at high injury.
+Generated behavior is withheld from HMM inputs but shares the planted latent
+generator, so this is concordance rather than independent validation. The pooled
+dose value is an arm-gradient check, not a within-arm dose-response estimate.
 
 ## Method boundaries
 
 - [Locskai et al.](https://doi.org/10.1242/bio.060601) motivates the
   blast-pressure syringe insult and repeated-hit dose axis.
 - [Eimon et al.](https://doi.org/10.1038/s41467-017-02404-4) motivates LFP
-  acquisition, QC, overlapping-window higher moments, and ICA complexity.
+  acquisition, resistance-change/noise QC, overlapping-window higher moments,
+  and ICA complexity.
 - [Mathis et al.](https://doi.org/10.1038/s41593-018-0209-y) and
   [Nath et al.](https://doi.org/10.1038/s41596-019-0176-0) motivate the
-  DeepLabCut validation workflow.
+  pose-summary interface.
 
 Neither source paper reports this exact 4-6 dpf repeated same-fish LFP design.
+Raw LFP feature extraction, pose tracking, injury-event clustering, and model
+uncertainty from refitting are outside the current benchmark.
 """
     output_path.write_text(text, encoding="utf-8")
 
@@ -831,7 +1111,29 @@ def run_analysis(
     restarts: int = 3,
     cv_folds: int = 3,
     bootstrap_iterations: int = 1_000,
+    allow_placeholder_data: bool = False,
 ) -> dict:
+    validate_dataset(lfp, outcomes, dlc)
+    candidates = tuple(sorted(set(int(value) for value in candidates)))
+    if not candidates or any(value < 1 for value in candidates):
+        raise ValueError("candidates must contain at least one positive state count.")
+    if restarts < 1:
+        raise ValueError("restarts must be at least one.")
+    if cv_folds < 2:
+        raise ValueError("cv_folds must be at least two.")
+    if bootstrap_iterations < 1:
+        raise ValueError("bootstrap_iterations must be at least one.")
+    if not allow_placeholder_data:
+        assert_analysis_ready(lfp, outcomes, dlc)
+    status_counts = {
+        "lfp": lfp[RECORD_STATUS].value_counts().sort_index().to_dict(),
+        "outcomes": outcomes[RECORD_STATUS].value_counts().sort_index().to_dict(),
+        "behavior": dlc[RECORD_STATUS].value_counts().sort_index().to_dict(),
+    }
+    has_placeholders = any(
+        PLACEHOLDER_STATUS in table_counts
+        for table_counts in status_counts.values()
+    )
     output_dir = Path(output_dir)
     figures_dir = output_dir / "figures"
     tables_dir = output_dir / "tables"
@@ -852,6 +1154,12 @@ def run_analysis(
         cv_folds,
     )
     model = models[selected]
+    train_model_sequences, train_model_fish_order, _ = build_sequences(
+        model_lfp,
+        train_ids,
+        center,
+        scale,
+    )
     model_sequences, model_fish_order, _ = build_sequences(
         model_lfp,
         set(outcomes["fish_id"].astype(str)),
@@ -888,14 +1196,45 @@ def run_analysis(
         scored_sessions, early_predictions
     )
     behavior, behavior_frame = behavior_validation(early_predictions, dlc)
+    test_outcomes = outcomes.loc[outcomes["fish_id"].isin(test_ids)]
+    test_with_endpoint = int(test_outcomes[TARGET].notna().sum())
 
     metrics = {
-        "benchmark_type": "synthetic_only",
+        "benchmark_type": (
+            "synthetic_placeholder_demo"
+            if has_placeholders
+            else "labeled_dataset_benchmark"
+        ),
         "seed": seed,
+        "run_config": {
+            "test_fraction": float(test_fraction),
+            "candidate_states": list(candidates),
+            "restarts": int(restarts),
+            "cv_folds": int(cv_folds),
+            "bootstrap_iterations": int(bootstrap_iterations),
+            "allow_placeholder_data": bool(allow_placeholder_data),
+        },
+        "software_versions": _software_versions(),
+        "input_data": {
+            "normalized_table_sha256": {
+                "lfp": _normalized_frame_sha256(lfp),
+                "outcomes": _normalized_frame_sha256(outcomes),
+                "behavior": _normalized_frame_sha256(dlc),
+            },
+            "record_status_counts": status_counts,
+            "note": (
+                "Hashes cover normalized in-memory CSV serialization. The "
+                "committed manifest describes the initialized seed-42 template."
+            ),
+        },
         "split": {
             "n_train_fish": len(train_ids),
             "n_test_fish": len(test_ids),
             "fish_overlap": len(train_ids & test_ids),
+            "n_train_model_fish_with_4dpf_baseline": len(train_model_fish_order),
+            "n_train_model_sessions": int(
+                sum(len(sequence) for sequence in train_model_sequences)
+            ),
         },
         "dataset_qc": {
             "n_fish": int(len(outcomes)),
@@ -927,12 +1266,48 @@ def run_analysis(
             ),
         },
         "state_recovery": recovery,
-        "early_prediction": early,
+        "early_prediction": {
+            **early,
+            "cohort_flow": {
+                "n_held_out_fish": int(len(test_ids)),
+                "n_with_observed_dpf6_endpoint": test_with_endpoint,
+                "n_excluded_missing_dpf6_endpoint": int(
+                    len(test_ids) - test_with_endpoint
+                ),
+                "n_excluded_without_usable_4dpf_prefix": int(
+                    test_with_endpoint - early["n_test_fish"]
+                ),
+                "n_forecast_eligible": int(early["n_test_fish"]),
+                "n_pose_style_check_eligible": int(behavior["n_fish"]),
+            },
+            "causal_definition": (
+                "Causal means forward-only temporal filtering: each state "
+                "probability uses only its current and prior LFP observations. "
+                "It does not mean causal-effect inference; the split is "
+                "retrospective and endpoint-stratified."
+            ),
+        },
         "dynamics": dynamics,
         "behavior_validation": behavior,
+        "selected_model_fit": {
+            "converged": bool(model.converged_),
+            "iterations": int(model.n_iter_),
+            "log_likelihood": float(model.log_likelihood_),
+            "log_likelihood_history": list(model.history_),
+            "n_restarts": int(model.n_restarts),
+            "max_iterations": int(model.n_iter),
+            "tolerance": float(model.tol),
+            "minimum_covariance": float(model.min_covar),
+            "variance_regularization": float(model.variance_regularization),
+            "start_pseudocount": float(model.start_pseudocount),
+            "transition_pseudocount": float(model.transition_pseudocount),
+        },
         "ordered_start_probabilities": model.startprob_[severity_to_raw].tolist(),
         "ordered_transition_matrix": transition_matrix.tolist(),
         "ordered_emission_means_robust_scaled": model.means_[severity_to_raw].tolist(),
+        "ordered_emission_variances_robust_scaled": model.covars_[
+            severity_to_raw
+        ].tolist(),
         "features": list(FEATURES),
         "preprocessing": {
             "fit_partition": "training fish only",
@@ -943,9 +1318,16 @@ def run_analysis(
             "center": center.tolist(),
             "scale_iqr": scale.tolist(),
         },
-        "critical_caveat": (
-            "All data and endpoints are synthetic. Daily repeated 4-6 dpf LFP "
-            "after 3 dpf TBI is a hypothetical benchmark protocol."
+        "replacement_notice": (
+            "Current committed data are deterministically generated synthetic "
+            "placeholders. Daily repeated 4-6 dpf LFP after 3 dpf TBI is a "
+            "demonstration protocol, not an experimental result. Raw LFP and "
+            "pose feature extraction are outside this repository's scope."
+        ),
+        "experimental_unit_notice": (
+            "The current synthetic split and bootstrap operate at the fish "
+            "level. A measured study with multiple larvae per injury event "
+            "must add event/clutch identifiers and use grouped inference."
         ),
     }
 
@@ -963,7 +1345,7 @@ def run_analysis(
         columns=[f"to_state_{state}" for state in range(selected)],
     ).to_csv(tables_dir / "tbi_transition_matrix.csv")
     (output_dir / "tbi_model_metrics.json").write_text(
-        json.dumps(_json_ready(metrics), indent=2) + "\n",
+        json.dumps(_json_ready(metrics), indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md")
@@ -990,6 +1372,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--restarts", type=int, default=3)
     parser.add_argument("--cv-folds", type=int, default=3)
     parser.add_argument("--bootstrap-iterations", type=int, default=1_000)
+    parser.add_argument(
+        "--allow-placeholder-data",
+        action="store_true",
+        help="Run a demonstration despite placeholder_pending_replacement rows.",
+    )
     return parser.parse_args()
 
 
@@ -1011,10 +1398,11 @@ def main() -> None:
         restarts=args.restarts,
         cv_folds=args.cv_folds,
         bootstrap_iterations=args.bootstrap_iterations,
+        allow_placeholder_data=args.allow_placeholder_data,
     )
     print(
         f"Selected K={metrics['selected_states']}; held-out state balanced accuracy "
-        f"{metrics['state_recovery']['balanced_accuracy']:.3f}; causal early AUC "
+        f"{metrics['state_recovery']['balanced_accuracy']:.3f}; forward-only AUC "
         f"{metrics['early_prediction']['roc_auc']:.3f}"
     )
     print(f"Outputs written to {args.output_dir}")

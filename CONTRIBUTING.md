@@ -1,7 +1,7 @@
 # Contributing
 
 Contributions should preserve the project's central boundary: committed data
-and benchmark conclusions must remain explicitly synthetic.
+and placeholder conclusions must remain explicitly demonstration-only.
 
 ## Development setup
 
@@ -13,8 +13,8 @@ python -m pytest
 
 ## Pull-request checklist
 
-- Keep scientific claims distinct from simulator assumptions.
-- Add or update tests for generator, schema, temporal, or model changes.
+- Keep scientific claims distinct from template assumptions.
+- Add or update tests for template initialization, schema, temporal, or model changes.
 - Preserve fish-level splitting and train-only preprocessing.
 - Do not add truth, dose, group, QC, or behavior columns to the HMM feature
   matrix.
@@ -25,8 +25,8 @@ python -m pytest
 ## Style
 
 - Prefer type annotations and focused functions.
-- Use deterministic random-number generators with explicit seeds.
+- Use deterministic template initialization with explicit seeds.
 - Keep output paths relative to the repository root.
-- Document units, provenance, and whether a value is measured or simulated.
-- Avoid claims of biological efficacy or disease prediction from synthetic
+- Document units, provenance, and whether a value is measured or a placeholder.
+- Avoid claims of biological efficacy or disease prediction from placeholder
   benchmark performance.

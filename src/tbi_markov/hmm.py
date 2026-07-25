@@ -2,7 +2,7 @@
 
 This implementation is intended for longitudinal zebrafish data, where each
 animal contributes only a few observations.  Unlike a classifier that treats
-rows independently, the model learns the initial disease-state distribution
+rows independently, the model learns the initial latent-state distribution
 and a full transition matrix (including both recovery and worsening).
 
 Only NumPy and SciPy are required.  The public API follows the useful subset of

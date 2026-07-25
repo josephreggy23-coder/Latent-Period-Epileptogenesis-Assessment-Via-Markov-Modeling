@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
+from scipy.stats import spearmanr
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
 from tbi_markov.common import (
     FEATURES,
@@ -18,7 +25,22 @@ from tbi_markov.modeling import (
     propagate_ordered_probabilities,
     run_analysis,
 )
-from tbi_markov.synthetic import generate_dataset
+from tbi_markov.template_data import generate_dataset
+
+
+def test_analysis_blocks_placeholder_records(tmp_path):
+    lfp, outcomes, dlc, _ = generate_dataset(seed=50, n_per_arm=20)
+    with pytest.raises(ValueError, match="placeholder records remain"):
+        run_analysis(
+            lfp,
+            outcomes,
+            dlc,
+            output_dir=tmp_path,
+            candidates=(3,),
+            restarts=1,
+            cv_folds=2,
+            bootstrap_iterations=10,
+        )
 
 
 def test_fish_split_has_no_overlap_and_preserves_arms():
@@ -106,6 +128,7 @@ def test_end_to_end_smoke(tmp_path):
         restarts=1,
         cv_folds=2,
         bootstrap_iterations=50,
+        allow_placeholder_data=True,
     )
     assert metrics["split"]["fish_overlap"] == 0
     assert metrics["early_prediction"]["prediction_cutoff_dpf"] == 5
@@ -124,10 +147,91 @@ def test_end_to_end_smoke(tmp_path):
         6 - predictions["last_lfp_dpf_used"].to_numpy(int),
     )
     assert predictions["forecast_risk_dpf6"].between(0, 1).all()
+    np.testing.assert_array_equal(
+        predictions["forecast_risk_dpf6"].to_numpy(float),
+        predictions["forecast_risk_dpf6"].round(6).to_numpy(float),
+    )
     assert not np.allclose(
         predictions["forecast_risk_dpf6"],
         predictions["filtered_high_state_probability_last_observation"],
     )
     written = json.loads((tmp_path / "tbi_model_metrics.json").read_text())
-    assert written["critical_caveat"].startswith("All data")
+    assert written["replacement_notice"].startswith("Current committed")
     assert TARGET not in written["features"]
+    y = predictions[TARGET].to_numpy(int)
+    score = predictions["forecast_risk_dpf6"].to_numpy(float)
+    assert written["early_prediction"]["roc_auc"] == pytest.approx(
+        roc_auc_score(y, score)
+    )
+    assert written["early_prediction"]["average_precision"] == pytest.approx(
+        average_precision_score(y, score)
+    )
+    assert written["early_prediction"]["n_unique_forecast_scores"] == int(
+        predictions["forecast_risk_dpf6"].nunique()
+    )
+    assert "NaN" not in (tmp_path / "tbi_model_metrics.json").read_text()
+
+
+def test_committed_prediction_artifacts_reproduce_reported_metrics():
+    root = Path(__file__).resolve().parents[1]
+    results_dir = root / "results"
+    data_dir = root / "data" / "template"
+    metrics = json.loads((results_dir / "tbi_model_metrics.json").read_text())
+    predictions = pd.read_csv(
+        results_dir / "tables" / "tbi_early_predictions.csv"
+    )
+    y = predictions[TARGET].to_numpy(int)
+    score = predictions["forecast_risk_dpf6"].to_numpy(float)
+
+    assert metrics["early_prediction"]["roc_auc"] == pytest.approx(
+        roc_auc_score(y, score)
+    )
+    assert metrics["early_prediction"]["average_precision"] == pytest.approx(
+        average_precision_score(y, score)
+    )
+    assert metrics["early_prediction"]["brier_score"] == pytest.approx(
+        brier_score_loss(y, score)
+    )
+
+    pooled_rho = spearmanr(
+        predictions["cumulative_pressure_burden_kpa_hits"],
+        score,
+    ).statistic
+    assert metrics["dynamics"][
+        "dose_index_vs_dpf6_forecast_risk_spearman_rho"
+    ] == pytest.approx(pooled_rho)
+
+    behavior = pd.read_csv(data_dir / "tbi_4_6dpf_dlc_behavior.csv")
+    behavior = behavior.loc[
+        (behavior["dpf"] == 6) & behavior["dlc_tracking_qc_pass"]
+    ]
+    merged = predictions.merge(
+        behavior[["fish_id", "dlc_behavior_abnormality_index"]],
+        on="fish_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    behavior_rho = spearmanr(
+        merged["forecast_risk_dpf6"],
+        merged["dlc_behavior_abnormality_index"],
+    ).statistic
+    assert metrics["behavior_validation"][
+        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho"
+    ] == pytest.approx(behavior_rho)
+
+
+def test_module_help_does_not_reset_template(tmp_path):
+    env = os.environ.copy()
+    source_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(source_dir) + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, "-m", "tbi_markov", "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0
+    assert "--force-reset-demo" in completed.stdout
+    assert not (tmp_path / "data").exists()

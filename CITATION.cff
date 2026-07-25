@@ -1,9 +1,8 @@
 cff-version: 1.2.0
-message: "If you use this synthetic benchmark, please cite the software repository."
-title: "Larval Zebrafish TBI Markov Modeling"
+message: "If you use this synthetic TBI benchmark or analysis software, please cite the repository and the exact commit."
+title: "Post-TBI Latent-State Forecasting with Hidden Markov Models"
 type: software
-version: 1.0.0
-date-released: 2026-07-24
+abstract: "A deterministic synthetic larval-zebrafish benchmark for forward-only post-TBI electrophysiological state forecasting."
 authors:
   - family-names: "David"
     given-names: "Joseph Regito"

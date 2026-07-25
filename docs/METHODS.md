@@ -2,32 +2,42 @@
 
 ## Scope
 
-This project is a synthetic benchmark joining three methodological interfaces:
+This project is a deterministic synthetic-placeholder demonstration joining
+three methodological interfaces:
 
 1. a larval-zebrafish syringe-blast TBI insult;
 2. forebrain LFP acquisition and statistical pattern summaries;
-3. markerless pose-derived behavioral validation.
+3. generated markerless-pose-style session summaries.
 
 The source papers do not contain the row-level data committed here and do not
-report repeated same-fish LFP at 4–6 dpf after 3 dpf TBI.
+report repeated same-fish LFP at 4–6 dpf after 3 dpf TBI. Raw-signal feature
+extraction is not implemented: seizure rate, ICA complexity, higher moments,
+and behavior summaries are generated columns accepted by the analysis
+interface, not quantities computed from raw recordings by this repository.
 
-## Synthetic cohort
+## Placeholder cohort
 
 The default seed-42 cohort contains 240 larvae, with 60 assigned to each of
 `sham`, `tbi_low`, `tbi_moderate`, and `tbi_high`.
 
-TBI occurs at 3 dpf. Synthetic LFP and behavior sessions occur at 4, 5, and
+TBI occurs at 3 dpf. Placeholder LFP and behavior sessions occur at 4, 5, and
 6 dpf, subject to planted attrition. The apparatus is held constant at a 10 mL
 syringe, three-prong clamp, 200 g weight, and 108 cm height. Injury dose varies
 only by 0, 3, 5, or 7 hits.
 
 The 195 kPa per-hit center and all numerical response distributions are
-simulator assumptions. `cumulative_pressure_burden_kpa_hits` equals synthetic
+template assumptions. `cumulative_pressure_burden_kpa_hits` equals generated
 measured peak kPa multiplied by hit count and is treated only as a dose index.
+
+The current generator assigns pressure and partitions at the fish level. A
+measured syringe exposure may cluster several larvae within one injury event.
+Such a study must add injury-event, clutch, and plate identifiers and use
+grouped splitting and cluster-aware uncertainty; the present fish-level
+bootstrap does not model those dependencies.
 
 ## LFP acquisition interface
 
-The Eimon-adapted synthetic session uses:
+The Eimon-adapted placeholder session uses:
 
 - non-anesthetized, non-paralyzed agar embedding;
 - a glass forebrain electrode and Intan-style acquisition;
@@ -38,18 +48,25 @@ The Eimon-adapted synthetic session uses:
 - amplitude mean, variance, skewness, kurtosis, and fourth-power mean;
 - seizure-event rate and single-channel ICA complexity.
 
-Session QC passes only when RMS noise is below 0.2 mV and electrode shift is no
-greater than 50%. Failed sessions remain in the raw table for auditability.
+Session QC passes only when RMS noise is below 0.2 mV and the absolute
+electrode-resistance change is no greater than 50%. The latter is adapted from
+Eimon et al.'s resistance-deviation exclusion rule and is a generated QC proxy,
+not a directly measured physical displacement. Failed sessions remain in the
+table for auditability.
 
-## Behavioral validation
+## Generated behavior concordance
 
-The DeepLabCut-style table represents head, four midline, and tail-tip
-keypoints. Derived summaries include speed, rest fraction, burst rate, tail
-bend, tail-angle change, and whirlpool-like circling.
+The pose-style table declares a head, four-midline, and tail-tip interface and
+directly generates session summaries for speed, rest fraction, burst rate, tail
+bend, tail-angle change, and whirlpool-like circling. It contains no per-frame
+coordinates.
 
-These values are simulated. No video was labeled, no network was trained, and
-behavior never enters the HMM. Locomotion is intentionally non-monotonic because
-severe synthetic injury may be hyperactive or stunned/inactive.
+These values are synthetic placeholders. No video was labeled, no network was
+trained, and behavior never enters the HMM. However, behavior and LFP emissions
+share the same planted latent state, so their association is a concordance
+check rather than independent validation. Locomotion is intentionally
+non-monotonic because a generated severe state may be hyperactive or
+stunned/inactive.
 
 ## Preprocessing
 
@@ -71,7 +88,10 @@ expectation maximization with:
 - variance regularization;
 - full transition matrices permitting worsening and recovery;
 - variable-length sequences;
-- Viterbi decoding and causal forward filtering.
+- Viterbi decoding and forward-only filtering.
+
+Here, "causal filtering" means that the probability at time *t* uses only
+observations at or before *t*. It does not mean causal-effect inference.
 
 Two-, three-, and four-state candidates are compared on training-only BIC and
 three-fold fish-level cross-validated log likelihood. Gaussian components are
@@ -79,6 +99,9 @@ ordered by a prespecified electrophysiological severity direction without
 consulting planted truth. When four microstates are selected, adjacent ordered
 components are collapsed into three validation macrostates at the two largest
 severity-score gaps.
+
+Selecting four states means only that K=4 had the lowest BIC at the upper edge
+of the tested K=2–4 set. It does not establish four biological states.
 
 ## Evaluation
 
@@ -90,15 +113,21 @@ Held-out evaluation includes:
 
 - balanced accuracy, macro F1, adjusted Rand index, and per-state recall;
 - arm/dpf occupancy and worsening/recovery fractions;
-- causal DPF6 forecast ROC-AUC, average precision, Brier score, sensitivity,
+- forward-only DPF6 forecast ROC-AUC, average precision, Brier score, sensitivity,
   specificity, and bootstrap confidence intervals;
-- association between synthetic dose index and forecast risk;
-- association between forecast risk and DPF6 DeepLabCut abnormality, including
+- pooled synthetic arm-gradient check between dose index and forecast risk;
+- concordance between forecast risk and generated DPF6 behavior abnormality, including
   dose/batch-adjusted partial Spearman correlation.
 
 For the forecast, the final filtered distribution from the available 4–5 dpf
 prefix is propagated one or two steps through the learned ordered microstate
-transition matrix. No 6 dpf LFP or behavior enters the forecast.
+transition matrix. No held-out target-fish 6 dpf LFP or behavior enters that
+fish's forecast; training-fish 4–6 dpf sessions are used to estimate the HMM
+emissions and transition dynamics. Probabilities are rounded to six decimals
+before rank-based metrics and correlations so ties are operationally meaningful
+and the metrics reproduce from serialized tables.
+Bootstrap intervals resample held-out fish conditional on the already fitted
+model; they do not include training or model-selection uncertainty.
 
 ## References
 
