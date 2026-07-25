@@ -24,63 +24,63 @@
   "selected_states": 4,
   "model_selection": {
     "2": {
-      "bic": 2954.443364507795,
-      "train_log_likelihood": -1381.113790056236,
-      "cv_log_likelihood_per_session": -2.856301790719612,
-      "cv_standard_deviation": 0.24710462865939029,
-      "cv_standard_error": 0.1426659238745015,
+      "bic": 2924.44243173491,
+      "train_log_likelihood": -1366.1133236697933,
+      "cv_log_likelihood_per_session": -2.937805323091908,
+      "cv_standard_deviation": 0.5147881898436469,
+      "cv_standard_error": 0.29721309998186973,
       "fold_log_likelihoods": [
-        -2.5938414858762853,
-        -3.084468204628173,
-        -2.890595681654378
+        -3.4916226661380168,
+        -2.8479037191051084,
+        -2.473889584032597
       ],
       "n_parameters": 31
     },
     "3": {
-      "bic": 2468.687992208163,
-      "train_log_likelihood": -1079.3312667530142,
-      "cv_log_likelihood_per_session": -2.2508461361817225,
-      "cv_standard_deviation": 0.43569173077510803,
-      "cv_standard_error": 0.2515467380467026,
+      "bic": 2450.2012223462143,
+      "train_log_likelihood": -1070.08788182204,
+      "cv_log_likelihood_per_session": -2.261552663436477,
+      "cv_standard_deviation": 0.2320334090202563,
+      "cv_standard_error": 0.13396455115883152,
       "fold_log_likelihoods": [
-        -1.9872983866199116,
-        -2.753745625871499,
-        -2.0114943960537555
+        -2.497304463018939,
+        -2.2539279298376464,
+        -2.0334255974528443
       ],
       "n_parameters": 50
     },
     "4": {
-      "bic": 1782.6261804453516,
-      "train_log_likelihood": -671.1950145441604,
-      "cv_log_likelihood_per_session": -1.5567849962702434,
-      "cv_standard_deviation": 0.39416624057647914,
-      "cv_standard_error": 0.22757198510229304,
+      "bic": 1802.623716554247,
+      "train_log_likelihood": -681.193782598608,
+      "cv_log_likelihood_per_session": -1.6957280944427942,
+      "cv_standard_deviation": 0.36605133825346575,
+      "cv_standard_error": 0.2113398386778612,
       "fold_log_likelihoods": [
-        -1.1902713071600632,
-        -1.973746380749849,
-        -1.5063373009008172
+        -2.098026152778393,
+        -1.606876823185421,
+        -1.382281307364569
       ],
       "n_parameters": 71
     }
   },
   "severity_alignment": {
     "raw_to_severity": [
-      3,
       0,
+      2,
+      3,
+      1
+    ],
+    "severity_to_raw": [
+      0,
+      3,
       1,
       2
     ],
-    "severity_to_raw": [
-      1,
-      2,
-      3,
-      0
-    ],
     "prespecified_score_by_raw_state": [
-      2.4608561526173283,
-      -0.9672551985967113,
-      0.22070383356159592,
-      1.2530309706209941
+      -0.8603232728465888,
+      1.3994173379850636,
+      2.606135994543933,
+      0.3061260626577662
     ],
     "microstate_to_macrostate": [
       0,
@@ -95,146 +95,146 @@
     "prediction_cutoff_dpf": 5,
     "target_dpf": 6,
     "forecast_method": "Causal filtered probability at the last contiguous QC-passing 4-5 dpf observation, propagated to 6 dpf with the learned ordered microstate transition matrix.",
-    "n_test_fish": 72,
-    "n_positive": 18,
-    "roc_auc": 0.8302469135802469,
-    "average_precision": 0.5535660455118155,
-    "brier_score": 0.1823516919124066,
+    "n_test_fish": 71,
+    "n_positive": 19,
+    "roc_auc": 0.7489878542510122,
+    "average_precision": 0.4381941052814233,
+    "brier_score": 0.20586680471615934,
     "threshold": 0.5,
-    "sensitivity": 0.1111111111111111,
-    "specificity": 0.9814814814814815,
+    "sensitivity": 0.10526315789473684,
+    "specificity": 0.9615384615384616,
     "confusion": {
       "true_positive": 2,
-      "true_negative": 53,
-      "false_positive": 1,
-      "false_negative": 16
+      "true_negative": 50,
+      "false_positive": 2,
+      "false_negative": 17
     },
     "roc_auc_95ci": [
-      0.7319607843137256,
-      0.9112316441728207
+      0.6421406770255271,
+      0.8529684095860567
     ],
     "average_precision_95ci": [
-      0.37761668369674434,
-      0.7860329978515074
+      0.2936103544880523,
+      0.6794691033424225
     ],
     "calibration": {
-      "observed_positive_rate": 0.25,
-      "mean_forecast_risk": 0.10176874904526906,
-      "median_forecast_risk": 0.029002679437555103,
-      "max_forecast_risk": 0.7073736217487065,
-      "n_above_threshold": 3
+      "observed_positive_rate": 0.2676056338028169,
+      "mean_forecast_risk": 0.11565271864009852,
+      "median_forecast_risk": 0.03694049547476092,
+      "max_forecast_risk": 0.6247894094395938,
+      "n_above_threshold": 4
     }
   },
   "dynamics": {
-    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.6719967997868335,
-    "dose_index_vs_dpf6_forecast_risk_p": 1.0289599814597381e-10,
+    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.6233834779412721,
+    "dose_index_vs_dpf6_forecast_risk_p": 6.383945875523997e-09,
     "group_transition_summary": [
       {
         "group": "sham",
-        "n_transitions": 35,
-        "worsening_fraction": 0.05714285714285714,
+        "n_transitions": 36,
+        "worsening_fraction": 0.08333333333333333,
         "recovery_fraction": 0.0,
-        "stable_fraction": 0.9428571428571428
+        "stable_fraction": 0.9166666666666666
       },
       {
         "group": "tbi_low",
-        "n_transitions": 36,
-        "worsening_fraction": 0.25,
+        "n_transitions": 35,
+        "worsening_fraction": 0.11428571428571428,
         "recovery_fraction": 0.0,
-        "stable_fraction": 0.75
+        "stable_fraction": 0.8857142857142857
       },
       {
         "group": "tbi_moderate",
-        "n_transitions": 35,
-        "worsening_fraction": 0.17142857142857143,
+        "n_transitions": 34,
+        "worsening_fraction": 0.14705882352941177,
         "recovery_fraction": 0.0,
-        "stable_fraction": 0.8285714285714286
+        "stable_fraction": 0.8529411764705882
       },
       {
         "group": "tbi_high",
-        "n_transitions": 35,
-        "worsening_fraction": 0.2571428571428571,
-        "recovery_fraction": 0.05714285714285714,
-        "stable_fraction": 0.6857142857142857
+        "n_transitions": 36,
+        "worsening_fraction": 0.25,
+        "recovery_fraction": 0.05555555555555555,
+        "stable_fraction": 0.6944444444444444
       }
     ]
   },
   "behavior_validation": {
-    "n_fish": 67,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.4753231829731614,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 4.810406521869157e-05,
-    "dose_batch_adjusted_partial_spearman_rho": 0.2262535545887144,
-    "dose_batch_adjusted_partial_spearman_p": 0.06561183490945359,
+    "n_fish": 66,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.3203183996145447,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 0.008740592925007565,
+    "dose_batch_adjusted_partial_spearman_rho": 0.032884595325025606,
+    "dose_batch_adjusted_partial_spearman_p": 0.7932272742630725,
     "note": "Behavioural values are blinded manual Baraban scores and pose-derived kinematics from the real Event Log, aggregated per session. Zero-event sessions are retained as observations."
   },
   "ordered_start_probabilities": [
-    0.4738524029305161,
-    0.33617036742800654,
-    0.12083650960672823,
-    0.06914072003474908
+    0.5038776162199168,
+    0.29868150901137763,
+    0.1480421847165493,
+    0.04939869005215627
   ],
   "ordered_transition_matrix": [
     [
-      0.8200576021891461,
-      0.16790457222781693,
-      0.009914977854006328,
-      0.0021228477290307197
+      0.8072323352558453,
+      0.17476669387402474,
+      0.01600611993035203,
+      0.0019948509397779224
     ],
     [
-      0.01673488154806551,
-      0.4904708126171395,
-      0.4637913182649835,
-      0.02900298756981159
+      0.005752563587615019,
+      0.5203041666970525,
+      0.4370024118629759,
+      0.03694085785235674
     ],
     [
-      0.005484780342234951,
-      0.2668757872793061,
-      0.49056006549387304,
-      0.23707936688458592
+      0.004910519685950796,
+      0.1659187929326446,
+      0.5368389380750379,
+      0.29233174930636663
     ],
     [
-      0.008418464489369388,
-      0.06394029152363605,
-      0.22026762016818419,
-      0.7073736238188103
+      0.010143147224767219,
+      0.0786610852238122,
+      0.2864063559261786,
+      0.624789411625242
     ]
   ],
   "ordered_emission_means_robust_scaled": [
     [
-      -0.5114821797052317,
-      -0.5303476123600582,
-      -0.5093473682402407,
-      -0.5377707459002542,
-      -0.5243270554225508,
-      3.566596063815342e-262,
-      0.5317093716586554
+      -0.4977580188681443,
+      -0.5306552818293241,
+      -0.49002475255370537,
+      -0.5037235128997634,
+      -0.521587196571677,
+      8.324095395540685e-249,
+      0.43636514572615326
     ],
     [
-      0.10528799902599409,
-      0.003951403712376499,
-      0.11965758702343844,
-      0.14120500806968458,
-      0.06527535265771452,
-      3.304215909469322e-259,
-      -0.14814094181339457
+      0.10246965569454543,
+      0.02226336132805144,
+      0.12972086950059022,
+      0.16768442474288553,
+      0.07794169715551022,
+      1.4265172265196664e-252,
+      -0.22277939458750237
     ],
     [
-      0.5712258133418263,
-      0.5881170315094356,
-      0.4981035793180902,
-      0.6447890186229307,
-      0.6427275864167371,
-      0.7883740417454721,
-      -0.6308081254619121
+      0.5941488627618801,
+      0.602600667745828,
+      0.57223333297995,
+      0.6802010715559723,
+      0.6543680607361315,
+      0.7502424081371319,
+      -0.7571182706655811
     ],
     [
-      1.214947383671616,
-      1.1160472304189695,
-      1.2462552239591356,
-      1.122866175800611,
-      1.1880523545916366,
-      1.4551293657894946,
-      -1.2369731969120847
+      1.2270302322085629,
+      1.1913750214559644,
+      1.1657437222863092,
+      1.1619193630534967,
+      1.2464415531524133,
+      1.4644465609474915,
+      -1.36330991902656
     ]
   ],
   "features": [
@@ -250,22 +250,22 @@
     "fit_partition": "training fish only",
     "transform": "log1p variance, kurtosis, fourth-power mean, and event rate; then median/IQR scaling",
     "center": [
-      4.6839,
-      6.674416558094205,
-      0.5037,
-      1.791742802422498,
-      14.775610802865083,
+      4.7032,
+      6.667419026549474,
+      0.5005,
+      1.782718724575906,
+      14.770528168806448,
       0.0,
-      0.7012
+      0.7245
     ],
     "scale_iqr": [
-      5.0687999999999995,
-      0.9469257988728286,
-      0.6446000000000001,
-      0.44225394425855025,
-      2.345374168501108,
+      5.1203,
+      0.9209560122369043,
+      0.6507,
+      0.44031843480904187,
+      2.301071559780592,
       1.0,
-      0.28559999999999997
+      0.2892
     ]
   },
   "critical_caveat": "Real measured recording. No planted latent state exists, so state-recovery accuracy is unmeasurable; only the causal 4-5 dpf to 6 dpf behavioural forecast is scored."

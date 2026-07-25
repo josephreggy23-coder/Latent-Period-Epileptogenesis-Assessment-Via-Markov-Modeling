@@ -50,9 +50,10 @@ The forward endpoint forecast is the more meaningful benchmark.
 | LFP sessions at 4–6 dpf | 706 |
 | QC-passing sessions | 706 (100%) |
 | Contiguous model sessions | 706 from 240 fish |
-| Held-out DPF6 forecast cohort | 72 fish, 18 positives |
-| ROC-AUC | 0.830 (95% bootstrap CI 0.732–0.911) |
-| Average precision / Brier score | 0.554 / 0.182 |
+| Endpoint resolved / unobserved | 233 fish / 7 fish (`NA`) |
+| Held-out DPF6 forecast cohort | 71 fish, 19 positives |
+| ROC-AUC | 0.749 (95% bootstrap CI 0.642–0.853) |
+| Average precision / Brier score | 0.438 / 0.206 |
 | Held-out planted-state balanced accuracy | **not measurable** |
 
 State recovery has no real-data counterpart: real animals carry no planted
@@ -83,6 +84,7 @@ flowchart LR
 │   ├── synthetic/                 normalized CSVs, manifest, workbook
 │   └── real/                      normalized real recording + manifest
 ├── docs/
+│   ├── EXPERIMENTAL_PROTOCOL.md   wet-lab protocol, apparatus, calibration
 │   ├── METHODS.md                 experimental and statistical methods
 │   └── REPRODUCIBILITY.md         deterministic workflow and safeguards
 ├── results/
@@ -175,10 +177,14 @@ Source workbooks (expected at the repository root):
    held-out state recovery is *unmeasurable*, not merely unreported. The
    analysis returns `state_recovery: null`, and the confusion-matrix figure is
    skipped rather than faked.
-2. **The endpoint is behavioral.** A fish is positive if the blinded scorer
-   logged at least one qualifying event (Baraban stage ≥ 2 with passing pose QC)
-   in the 6 dpf session. It shares no variable with the LFP feature matrix, so
-   the forecast target stays independent of the model's inputs.
+2. **The endpoint is behavioral, and three-valued.** A fish is positive if the
+   blinded scorer logged at least one qualifying event (Baraban stage ≥ 2 with
+   passing pose QC) in the 6 dpf session, negative if it was observed at 6 dpf
+   with no such event, and **`NA` if it was never observed at 6 dpf** — 7 fish
+   here. An unobserved animal has an unknown outcome, not a negative one;
+   coding absence as 0 would pad the negative class with animals nobody checked.
+   The endpoint shares no variable with the LFP feature matrix, so the forecast
+   target stays independent of the model's inputs.
 3. **Behavior is per-event.** The Event Log lists scored events; sessions with
    none are absent. They are materialized as zero-event rows rather than
    dropped, because "no scored behavior" is an observation. Dropping them would
@@ -186,15 +192,74 @@ Source workbooks (expected at the repository root):
 
 ### Honest reading of the real result
 
-The forecast **discriminates** well (AUC 0.830) but is **poorly calibrated**
-against this endpoint: the median forecast risk is 0.029 and only 3 of 72
-held-out fish exceed the fixed 0.5 threshold, so sensitivity at that threshold
-is 0.111. The propagated quantity is the probability of occupying the top *LFP*
-macrostate, while the endpoint is a *behavioral* event — different scales, so
-the risk sits below 0.5 for most animals. Any deployment would need a threshold
-fitted on training fish; none is tuned on the held-out set. The metrics record
-the observed positive rate next to the mean, median, and maximum forecast risk
-so this is checkable rather than asserted.
+The forecast **discriminates** (AUC 0.749, 95% CI 0.642–0.853) but is **poorly
+calibrated** against this endpoint: the median forecast risk is 0.037 and only 4
+of 71 held-out fish exceed the fixed 0.5 threshold, so sensitivity at that
+threshold is 0.105. The propagated quantity is the probability of occupying the
+top *LFP* macrostate, while the endpoint is a *behavioral* event — different
+scales, so the risk sits below 0.5 for most animals. Any deployment would need a
+threshold fitted on training fish; none is tuned on the held-out set. The
+metrics record the observed positive rate next to the mean, median, and maximum
+forecast risk, so this is checkable rather than asserted.
+
+Inferred risk does track injury dose (Spearman ρ = 0.623, p = 6×10⁻⁹) without
+the endpoint entering the model.
+
+## Experimental protocol
+
+The wet-lab methodology this repository models is specified in full in
+**[docs/EXPERIMENTAL_PROTOCOL.md](docs/EXPERIMENTAL_PROTOCOL.md)** — apparatus,
+pressure calibration, plate layout, imaging, pose estimation, LFP acquisition,
+and required metadata.
+
+> **This is a new integrated protocol, not a replication.** No published study
+> has run this exact combined experiment. Locskai et al. recorded acute behavior
+> after TBI at 6 dpf and used a 3 dpf injury for a 7 dpf tau endpoint; Eimon et
+> al. demonstrated penetrating forebrain LFP at 7 dpf; the high-speed pose study
+> examined PTZ and genetic seizures at 3, 5, and 7 dpf. **3 dpf TBI followed by
+> longitudinal 4–6 dpf LFP and behavior integrates three published methods and
+> requires a pilot study.**
+
+### Real apparatus (as recorded in `data/real/`)
+
+| Parameter | Value |
+|---|---|
+| Fish | Wild-type AB larvae, 28 °C, 14 h/10 h light cycle, E3 |
+| Injury | 3 dpf, **single** drop from 108 cm |
+| Syringe / holder | 20 mL BD Luer-Lok in a three-prong clamp, 1.0 mL E3 |
+| Arms | Sham (0 g), 100 g, 200 g, 300 g |
+| Measured peak pressure | 0 / 115 / 210 / 319 kPa |
+| Recording | 24, 48, 72 h post-insult (4, 5, 6 dpf) |
+| Replicates | 6 clutches, 3 recording batches |
+
+Note this differs from the **synthetic** simulator below, which models 3/5/7
+*repeated* hits at a 195 kPa nominal center in a 10 mL syringe. The two
+apparatus descriptions are not interchangeable.
+
+Locskai reported behavioral seizure phenotypes at roughly 90–300 kPa, with
+pressures above ≈ 300 kPa suppressing gross locomotion — so **low movement in
+the 300 g arm cannot be read as absence of seizures.**
+
+### Three constraints that bound the real-data claims
+
+1. **Longitudinal penetrating LFP is unvalidated.** The electrode metadata
+   (`forebrain` target, 1 M chloride, 2.45–3.57 MΩ) matches Eimon's penetrating
+   preparation and its ≈ 3 MΩ stop criterion — yet 228 fish have all three daily
+   sessions. That method was demonstrated at 7 dpf and **was not validated as a
+   recoverable, repeated measurement in the same larva at 4, 5, and 6 dpf.**
+   Under the protocol, that combination is the case calling for independent
+   terminal cohorts, in which individual longitudinal state transitions should
+   not be claimed. A Markov model over per-fish daily transitions presupposes
+   the opposite. **This is the single most important thing a pilot must settle**,
+   and no amount of modeling can resolve it.
+2. **Seizure timing is interval-censored.** Behavior is scored in three discrete
+   sessions, so any reconstructed latency is a *first observed* time, not a
+   first-occurrence time. The repository therefore scores presence of a
+   qualifying event in the 6 dpf session rather than a continuous latency.
+3. **`insult_batch_id` is absent.** The protocol makes the independent
+   syringe/drop batch the experimental unit, with larvae nested inside it. That
+   identifier is not in the dataset, so drop batch cannot enter the model as a
+   grouping variable; only clutch and recording batch can.
 
 ## Methods summary
 
@@ -277,8 +342,20 @@ workbook tests skip automatically when the source files are not present.
 
 ### Real recording
 
+- **Repeated penetrating forebrain LFP in the same larva at 4–6 dpf is not a
+  validated preparation** — see constraint 1 above. Longitudinal per-fish state
+  transitions rest on an assumption this dataset cannot verify.
+- The combined 3 dpf TBI → 4–6 dpf LFP + behavior protocol is a new integration
+  of three published methods and has not itself been published or piloted.
 - Three sessions per fish is a short series for a Markov model: the transition
   matrix rests on at most two observed steps per animal.
+- The drop batch, which the protocol defines as the experimental unit, is not
+  identified in the data, so larvae from one impact cannot be treated as the
+  nested observations they are.
+- Pressures above ≈ 300 kPa can suppress locomotion, so reduced movement in the
+  highest-dose arm is ambiguous between "no seizure" and "too injured to move".
+- A single seizure is not chronic epilepsy: the endpoint is an operational
+  early post-traumatic seizure outcome, not post-traumatic epilepsy.
 - No planted latent state exists, so state recovery is unmeasurable and the
   latent states are validated only indirectly, through the forward forecast and
   the independent behavioral channel.
@@ -310,9 +387,20 @@ workbook tests skip automatically when the source files are not present.
    estimation across species and behaviors.* Nature Protocols.
    2019;14:2152–2176.
    [doi:10.1038/s41596-019-0176-0](https://doi.org/10.1038/s41596-019-0176-0)
+5. Whyte-Fagundes P, et al. *High-speed pose estimation of larval zebrafish
+   seizure behavior.* Communications Biology. 2025.
+   [doi:10.1038/s42003-025-08310-6](https://doi.org/10.1038/s42003-025-08310-6)
+6. Hong S, et al. *iZAP: non-invasive zebrafish electrophysiology.* Scientific
+   Reports. 2016;6:28248.
+   [doi:10.1038/srep28248](https://doi.org/10.1038/srep28248)
+7. Baraban SC, Taylor MR, Castro PA, Baier H. *Pentylenetetrazole induced
+   changes in zebrafish behavior, neural activity and c-fos expression.*
+   Neuroscience. 2005;131(3):759–768.
+   [doi:10.1016/j.neuroscience.2004.11.031](https://doi.org/10.1016/j.neuroscience.2004.11.031)
 
 ## Citation
 
-Use the repository metadata in [CITATION.cff](CITATION.cff). The source code,
-dataset, and results should be cited as a synthetic computational benchmark,
-not as experimental animal data.
+Use the repository metadata in [CITATION.cff](CITATION.cff). Cite the simulator,
+its dataset, and its results as a **synthetic computational benchmark**; cite the
+real-recording analysis as a **retrospective single-cohort analysis**, not as a
+prospective or clinical finding. The two must not be conflated.

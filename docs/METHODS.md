@@ -134,6 +134,20 @@ with the LFP feature matrix, so the forecast target remains independent of the
 model's inputs. The column keeps the `high_burden_state_dpf6_TRUTH` name for
 schema compatibility but is an observation, not planted truth.
 
+It is **three-valued**: `1` for a qualifying event, `0` for a fish observed at
+6 dpf without one, and `NA` for a fish with no evidence of 6 dpf observation at
+all. Evidence of observation is a 6 dpf LFP session or any 6 dpf behavioral row
+— including a normal one, since the Event Log records normal swim bouts, so
+presence in the log proves observation while absence alone proves nothing.
+Seven fish fall in the `NA` class; they are excluded from endpoint scoring
+rather than counted as negatives, per the protocol rule that dead, lost, or
+inadequately covered larvae are `NA` and never `0`. Coding them `0` would pad
+the negative class with animals nobody checked and inflate apparent
+discrimination.
+
+The full wet-lab protocol, including the constraints this dataset cannot
+satisfy, is in [EXPERIMENTAL_PROTOCOL.md](EXPERIMENTAL_PROTOCOL.md).
+
 ### Behavioral aggregation
 
 The Event Log is per-event; sessions with no scored event do not appear in it.
@@ -157,7 +171,7 @@ forecast and the association with the independent behavioral channel.
 
 Discrimination and calibration are reported separately. The propagated quantity
 is the probability of occupying the top *LFP* macrostate while the endpoint is a
-*behavioral* event, so the score can rank well (AUC 0.830) yet sit far below the
+*behavioral* event, so the score can rank well (AUC 0.749) yet sit far below the
 fixed 0.5 threshold. The metrics record the observed positive rate alongside the
 mean, median, and maximum forecast risk and the count above threshold, so a low
 sensitivity is not mistaken for a ranking failure.

@@ -21,16 +21,26 @@ over:
    is defined from the blinded manual Baraban scores in the Event Log: a fish is
    positive if it has at least one qualifying event at 6 dpf. Nothing derived
    from LFP enters the endpoint, so the forecast target stays independent of the
-   model's inputs.
+   model's inputs. It is **three-valued** - a fish never observed at 6 dpf gets
+   ``NA``, not ``0``, because an unobserved animal has an unknown outcome rather
+   than a negative one.
 3. **Behaviour is per-event, not per-session.** The real Event Log lists scored
    events; sessions with no scored event are absent entirely. They are
    materialized as zero-event rows rather than dropped, because "no scored
    behaviour" is an observation, not a missing value.
+
+The recording modality carries a caveat the modelling cannot resolve: the
+electrode metadata (forebrain target, 1 M chloride, ~2.5-3.6 MOhm) matches the
+Eimon penetrating-electrode preparation, which was demonstrated at 7 dpf and has
+not been validated as a recoverable, repeated measurement in the same larva at
+4, 5, and 6 dpf. Per-fish longitudinal state transitions therefore rest on an
+assumption this dataset cannot verify. See ``docs/EXPERIMENTAL_PROTOCOL.md``.
 """
 from __future__ import annotations
 
 import argparse
 import json
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +92,7 @@ def build_real_tables(
     raw_events = pd.read_excel(behavior_workbook, sheet_name=EVENTS_SHEET)
 
     lfp = _normalize_lfp(raw_lfp)
-    endpoint = _dpf6_endpoint(raw_events)
+    endpoint = _dpf6_endpoint(raw_events, raw_lfp)
     outcomes = _normalize_outcomes(raw_lfp, raw_outcomes, raw_events, endpoint)
     behavior = _normalize_behavior(raw_lfp, raw_events)
     return lfp, outcomes, behavior
@@ -107,16 +117,44 @@ def _normalize_lfp(raw: pd.DataFrame) -> pd.DataFrame:
     return frame.sort_values(["fish_id", "dpf"]).reset_index(drop=True)
 
 
-def _dpf6_endpoint(raw_events: pd.DataFrame) -> pd.Series:
+def _dpf6_endpoint(raw_events: pd.DataFrame, raw_lfp: pd.DataFrame) -> pd.Series:
     """Real analogue of the planted 6 dpf high-burden endpoint.
 
-    Positive iff the fish has at least one qualifying blinded behavioural event
-    in the 6 dpf session. This is a behavioural observation and shares no
-    variable with the LFP feature matrix that drives the forecast.
+    Three-valued, deliberately:
+
+    ``1`` at least one qualifying blinded event (Baraban stage >= 2 with
+          passing pose QC) in the 6 dpf session;
+    ``0`` the fish was observed at 6 dpf and no qualifying event occurred;
+    ``NA`` there is no evidence the fish was observed at 6 dpf at all.
+
+    The third case matters. A fish that died, was lost, or lacks 6 dpf coverage
+    has an *unknown* endpoint, not a negative one. Coding absence as 0 would
+    silently inflate the negative class with unobserved animals and bias every
+    downstream rate. Only sessions that actually happened count as evidence of
+    observation: a 6 dpf LFP recording, or any 6 dpf behavioural row (including
+    a normal one - the Event Log stores normal swim bouts too, so presence in
+    the log is proof of observation, and absence alone is not proof of absence).
     """
+    observed = set(
+        raw_lfp.loc[raw_lfp["dpf"] == TARGET_DPF, "fish_id"].astype(str)
+    ) | set(
+        raw_events.loc[
+            raw_events["observation_dpf"] == TARGET_DPF, "fish_id"
+        ].astype(str)
+    )
     qualifying = raw_events.loc[raw_events[QUALIFYING_FLAG].astype(bool)]
-    dpf6 = qualifying.loc[qualifying["observation_dpf"] == TARGET_DPF]
-    return pd.Series(1, index=pd.Index(dpf6["fish_id"].astype(str).unique()))
+    positive = set(
+        qualifying.loc[
+            qualifying["observation_dpf"] == TARGET_DPF, "fish_id"
+        ].astype(str)
+    )
+    return pd.Series(
+        {
+            fish_id: (1.0 if fish_id in positive else 0.0)
+            for fish_id in sorted(observed)
+        },
+        dtype=float,
+    )
 
 
 def _normalize_outcomes(
@@ -147,7 +185,10 @@ def _normalize_outcomes(
         how="left",
         validate="one_to_one",
     )
-    frame[TARGET] = frame["fish_id"].map(endpoint).fillna(0).astype(int)
+    # Left as NaN where the fish was never observed at 6 dpf; see _dpf6_endpoint.
+    # Downstream, fish_level_split puts these in a "missing" stratum and
+    # early_prediction drops them, so an unknown endpoint is never scored.
+    frame[TARGET] = frame["fish_id"].map(endpoint).astype(float)
 
     # An LFP session at 6 dpf is direct evidence the animal was alive then.
     frame["survived_to_6dpf"] = frame["last_observed_dpf"] >= TARGET_DPF
@@ -297,8 +338,14 @@ def validate_real_tables(
     values = lfp[list(FEATURES)].to_numpy(float)
     if not np.isfinite(values).all():
         raise ValueError("Real LFP model inputs must be finite.")
-    if outcomes[TARGET].isna().any():
-        raise ValueError("Every fish needs a resolved 6 dpf endpoint.")
+    resolved = outcomes[TARGET].notna()
+    if not resolved.any():
+        raise ValueError("No fish has a resolved 6 dpf endpoint.")
+    if resolved.mean() < 0.5:
+        raise ValueError(
+            "More than half of fish lack a 6 dpf observation; the endpoint "
+            "cannot carry the analysis."
+        )
     if outcomes[TARGET].nunique() < 2:
         raise ValueError("The real endpoint must contain both classes.")
     if set(behavior["fish_id"]) - set(outcomes["fish_id"]):
@@ -333,8 +380,20 @@ def write_real_tables(
                 "stage >= 2 with passing pose QC) in the 6 dpf session."
             ),
             "n_positive": int(outcomes[TARGET].sum()),
+            "n_negative": int((outcomes[TARGET] == 0).sum()),
+            "n_unresolved": int(outcomes[TARGET].isna().sum()),
+            "unresolved_rule": (
+                "A fish never observed at 6 dpf is NA, not 0: an unobserved "
+                "animal has an unknown outcome, not a negative one."
+            ),
             "positive_by_group": {
                 group: int(outcomes.loc[outcomes["group"] == group, TARGET].sum())
+                for group in GROUPS
+            },
+            "unresolved_by_group": {
+                group: int(
+                    outcomes.loc[outcomes["group"] == group, TARGET].isna().sum()
+                )
                 for group in GROUPS
             },
         },
@@ -365,7 +424,20 @@ def load_real_dataset(
 # ===========================================================================
 # Reporting
 # ===========================================================================
-def write_real_report(metrics: dict, output_path: Path) -> None:
+def write_real_report(
+    metrics: dict,
+    output_path: Path,
+    endpoint: dict | None = None,
+) -> None:
+    endpoint = endpoint or {}
+    endpoint_counts = (
+        "\nResolved: "
+        f"**{endpoint['n_positive']} positive**, "
+        f"**{endpoint['n_negative']} negative**, "
+        f"**{endpoint['n_unresolved']} unresolved (`NA`)**.\n"
+        if endpoint
+        else ""
+    )
     early = metrics["early_prediction"]
     dynamics = metrics["dynamics"]
     behavior = metrics["behavior_validation"]
@@ -398,6 +470,13 @@ blinded scorer logged at least one qualifying event (Baraban stage >= 2 with
 passing pose QC) in the 6 dpf session. It shares no variable with the LFP
 feature matrix, so the forecast target is independent of the model's inputs.
 
+It is **three-valued**. A fish never observed at 6 dpf is `NA`, not `0`: an
+unobserved animal has an unknown outcome, not a negative one, and coding
+absence as negative would pad the negative class with animals nobody checked.
+{endpoint_counts}
+Unresolved fish are excluded from endpoint scoring rather than counted as
+negatives. See `docs/EXPERIMENTAL_PROTOCOL.md` section 5.
+
 ## Causal 6 dpf forecast
 
 Only an uninterrupted, QC-passing **4-5 dpf** LFP prefix is used. Its final
@@ -412,7 +491,7 @@ to 6 dpf:
 - sensitivity/specificity at probability 0.5:
   **{early['sensitivity']:.3f}/{early['specificity']:.3f}**
 
-### Discrimination is good; calibration is not
+### Discrimination versus calibration
 
 The forecast **ranks** fish well but is **badly calibrated** against this
 endpoint, so the fixed 0.5 threshold is a poor operating point and the
@@ -452,6 +531,22 @@ substituted for it.
 
 ## Boundaries
 
+- **Repeated penetrating forebrain LFP in the same larva at 4-6 dpf is not a
+  validated preparation.** The electrode metadata matches the Eimon penetrating
+  method, which was demonstrated at 7 dpf and never validated as recoverable
+  across days. Per-fish longitudinal state transitions - the premise of this
+  Markov model - therefore rest on an assumption the dataset cannot verify.
+  See `docs/EXPERIMENTAL_PROTOCOL.md` section 6.
+- The combined 3 dpf TBI to 4-6 dpf LFP+behaviour protocol integrates three
+  published methods and has not itself been published or piloted.
+- The drop batch, which the protocol defines as the experimental unit, is not
+  identified in the data, so larvae from one impact cannot be modelled as the
+  nested observations they are.
+- Pressures above roughly 300 kPa can suppress locomotion, so reduced movement
+  in the highest-dose arm is ambiguous between "no seizure" and "too injured to
+  move".
+- A single qualifying event is not chronic epilepsy; this is an operational
+  early post-traumatic seizure outcome.
 - Three sessions per fish is a short series for a Markov model; the transition
   matrix is estimated from at most two observed steps per animal.
 - Behaviour is scored in three discrete sessions, so event timing is
@@ -476,7 +571,8 @@ def run_real_analysis(
         kwargs.pop("behavior_workbook", DEFAULT_BEHAVIOR_WORKBOOK),
     )
     validate_real_tables(lfp, outcomes, behavior)
-    write_real_tables(lfp, outcomes, behavior)
+    manifest = write_real_tables(lfp, outcomes, behavior)
+    report_writer = partial(write_real_report, endpoint=manifest["endpoint"])
     lfp, outcomes, behavior = load_real_dataset()
     return run_analysis(
         lfp,
@@ -504,7 +600,7 @@ def run_real_analysis(
             ),
             "speed_panel_title": "Observed locomotor speed",
         },
-        report_writer=write_real_report,
+        report_writer=report_writer,
         **kwargs,
     )
 

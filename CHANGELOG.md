@@ -2,6 +2,45 @@
 
 All notable project changes are documented here.
 
+## 1.2.0 — 2026-07-25
+
+### Added
+
+- `docs/EXPERIMENTAL_PROTOCOL.md`: the full wet-lab protocol — apparatus,
+  pressure calibration and conversion, plate layout, MCAM imaging, pose
+  estimation and Baraban staging, LFP acquisition, and required metadata — with
+  an explicit map of where the three published methods end and the new
+  integration begins.
+- README sections for the real apparatus (20 mL syringe, three-prong clamp,
+  108 cm, single drop at 100/200/300 g, measured 115/210/319 kPa) and the three
+  constraints that bound the real-data claims.
+- `n_negative`, `n_unresolved`, and per-group unresolved counts in the real
+  manifest and report.
+
+### Fixed
+
+- **The 6 dpf endpoint is now three-valued.** Fish never observed at 6 dpf were
+  being coded `0` (no high-burden state) rather than `NA`. Seven fish had no
+  6 dpf LFP session and no 6 dpf behavioural row, so they were counted as
+  confirmed negatives despite never having been checked. They are now `NA` and
+  excluded from endpoint scoring.
+
+  This corrects the headline: the held-out forecast is **ROC-AUC 0.749**
+  (95% CI 0.642–0.853) on 71 fish with 19 positives, not the previously
+  reported 0.830 on 72 fish with 18 positives. The earlier figure was inflated
+  by unobserved animals padding the negative class.
+
+### Changed
+
+- Documented that the electrode metadata (forebrain, 1 M chloride, 2.45–3.57 MΩ)
+  matches the Eimon penetrating preparation, which was demonstrated at 7 dpf and
+  never validated as a recoverable repeated measurement at 4–6 dpf — so per-fish
+  longitudinal state transitions rest on an unverifiable assumption.
+- Noted that `insult_batch_id` is absent, so the drop batch cannot enter the
+  model as the experimental unit the protocol requires.
+- Citation guidance now separates the synthetic benchmark from the retrospective
+  single-cohort real analysis.
+
 ## 1.1.0 — 2026-07-25
 
 ### Added

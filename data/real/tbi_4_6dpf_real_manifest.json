@@ -18,11 +18,20 @@
     "name": "high_burden_state_dpf6_TRUTH",
     "definition": "At least one qualifying blinded behavioural event (Baraban stage >= 2 with passing pose QC) in the 6 dpf session.",
     "n_positive": 60,
+    "n_negative": 173,
+    "n_unresolved": 7,
+    "unresolved_rule": "A fish never observed at 6 dpf is NA, not 0: an unobserved animal has an unknown outcome, not a negative one.",
     "positive_by_group": {
       "sham": 4,
       "tbi_low": 5,
       "tbi_moderate": 18,
       "tbi_high": 33
+    },
+    "unresolved_by_group": {
+      "sham": 2,
+      "tbi_low": 3,
+      "tbi_moderate": 2,
+      "tbi_high": 0
     }
   },
   "features": [

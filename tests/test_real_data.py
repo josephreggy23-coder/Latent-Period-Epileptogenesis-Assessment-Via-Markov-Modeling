@@ -149,7 +149,30 @@ def test_real_endpoint_is_independent_of_lfp_features():
     lfp, outcomes, _ = build_real_tables()
     merged = lfp.merge(outcomes[["fish_id", TARGET]], on="fish_id")
     # The endpoint comes from the behavioural log, so it is constant within a
-    # fish while the LFP features vary across that fish's sessions.
+    # fish while the LFP features vary across that fish's sessions. Fish with an
+    # unresolved endpoint contribute no distinct value at all (nunique == 0).
     per_fish = merged.groupby("fish_id")[TARGET].nunique()
-    assert (per_fish == 1).all()
+    assert per_fish.isin([0, 1]).all()
     assert np.isfinite(merged[list(FEATURES)].to_numpy(float)).all()
+
+
+@pytest.mark.skipif(not _WORKBOOKS_PRESENT, reason="real source workbooks not present")
+def test_unobserved_fish_get_na_endpoint_not_zero():
+    """A fish never observed at 6 dpf has an unknown endpoint, not a negative one.
+
+    Coding absence as 0 would pad the negative class with animals that were
+    never actually checked, inflating both the negative rate and the apparent
+    discrimination.
+    """
+    lfp, outcomes, _ = build_real_tables()
+    observed = set(lfp.loc[lfp["dpf"] == 6, "fish_id"])
+    unresolved = set(outcomes.loc[outcomes[TARGET].isna(), "fish_id"])
+
+    # Every unresolved fish must genuinely lack a 6 dpf LFP session.
+    assert not (unresolved & observed)
+    # Endpoint stays three-valued, and the negatives are real observations.
+    assert outcomes[TARGET].dropna().isin([0.0, 1.0]).all()
+    assert outcomes[TARGET].isna().any(), "expected at least one unobserved fish"
+    # Every fish with a 6 dpf session must have a resolved endpoint.
+    resolved = set(outcomes.loc[outcomes[TARGET].notna(), "fish_id"])
+    assert observed <= resolved
