@@ -1,22 +1,6 @@
-# RELAPSE epileptogenesis HMM pipeline - Python dependencies
-# Validated on Python 3.14.4 (Windows) with the versions noted in brackets.
-#
-#   pip install -r requirements.txt
-#
-# Tier 1 (Gaussian HMM):
-numpy           # [2.4.4]
-pandas          # [3.0.2]
-scipy           # [1.17.1]
-scikit-learn    # [1.8.0]
-matplotlib      # [3.10.9]
-openpyxl        # [3.1.5]  - read the .xlsx
-hmmlearn        # [0.3.3]  - Gaussian HMM (compiles from source if no wheel)
-#
-# Tier 2 (Bayesian hierarchical HMM via MCMC):
-numpyro         # [0.21.0] - pulls jax + jaxlib (cp314 Windows wheels exist)
-# jax / jaxlib are installed automatically by numpyro [jax 0.10.2, jaxlib 0.10.2]
-#
-# ECHO V5 (judge-hardened pipeline) additionally needs:
-lifelines       # [0.30.3] - Kaplan-Meier + Cox proportional hazards (item 6)
-#   note: lifelines pins pandas<3 (installs pandas 2.3.3), which also avoids the
-#   pandas-3 PyArrow-string indexing issue.
+# Runtime dependencies for the TBI Markov benchmark
+numpy>=2.0
+pandas>=2.2
+scipy>=1.13
+scikit-learn>=1.5
+matplotlib>=3.8

@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latent-tbi-markov"
+version = "1.0.0"
+description = "Synthetic larval-zebrafish TBI electrophysiology benchmark using hidden Markov modeling"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Joseph Regito David", email = "joseph.reggy23@gmail.com" },
+]
+keywords = [
+  "computational-neuroscience",
+  "electrophysiology",
+  "hidden-markov-model",
+  "traumatic-brain-injury",
+  "zebrafish",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "matplotlib>=3.8",
+  "numpy>=2.0",
+  "pandas>=2.2",
+  "scikit-learn>=1.5",
+  "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+tbi-generate = "tbi_markov.synthetic:main"
+tbi-analyze = "tbi_markov.modeling:main"
+tbi-pipeline = "tbi_markov.pipeline:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]

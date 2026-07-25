@@ -1,0 +1,1024 @@
+"""Fit and evaluate the TBI-only hidden Markov model.
+
+The primary prospective-style test is intentionally causal: LFP observations
+through 5 dpf predict a planted endpoint at 6 dpf.  No 6 dpf LFP, behavior,
+injury dose, group, or truth field enters that early-risk calculation.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+from typing import Iterable
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy.stats import rankdata, spearmanr
+from sklearn.metrics import (
+    adjusted_rand_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
+    f1_score,
+    roc_auc_score,
+    roc_curve,
+)
+from sklearn.model_selection import StratifiedKFold
+
+from .common import (
+    DATA_DIR,
+    DLC_CSV,
+    DOSE_INDEX,
+    FEATURES,
+    GROUP_ORDER,
+    GROUPS,
+    LFP_CSV,
+    OBSERVATION_DPF,
+    OUTCOMES_CSV,
+    RESULTS_DIR,
+    PREDICTION_CUTOFF_DPF,
+    SEED,
+    TARGET,
+    TARGET_DPF,
+    TRUTH_STATE,
+    build_sequences,
+    fit_robust_scaler,
+    load_dataset,
+    qc_sessions,
+)
+from .hmm import DiagonalGaussianHMM
+
+RISING_FEATURES = (
+    "lfp_mean_uv",
+    "lfp_variance_uv2",
+    "lfp_skewness",
+    "lfp_kurtosis",
+    "lfp_fourth_power_mean_uv4",
+    "lfp_seizure_event_rate_per_h",
+)
+FALLING_FEATURES = ("lfp_ica_complexity",)
+
+
+def fish_level_split(
+    outcomes: pd.DataFrame,
+    test_fraction: float = 0.30,
+    seed: int = SEED,
+) -> tuple[set[str], set[str], pd.DataFrame]:
+    """Create a deterministic arm/outcome-balanced fish-level partition."""
+    if not 0.1 <= test_fraction <= 0.5:
+        raise ValueError("test_fraction must be between 0.1 and 0.5.")
+    frame = outcomes.copy()
+    target_label = frame[TARGET].map(
+        lambda value: "missing" if pd.isna(value) else str(int(value))
+    )
+    frame["_stratum"] = frame["group"].astype(str) + "__" + target_label
+    rng = np.random.default_rng(seed)
+    test_ids: set[str] = set()
+
+    for _, stratum in frame.groupby("_stratum", sort=True):
+        ids = stratum["fish_id"].astype(str).to_numpy()
+        ids = ids[rng.permutation(len(ids))]
+        n_test = int(round(test_fraction * len(ids)))
+        if len(ids) >= 3:
+            n_test = max(1, min(len(ids) - 1, n_test))
+        else:
+            n_test = 0
+        test_ids.update(ids[:n_test])
+
+    # Keep the arm sizes close even when a rare "missing" stratum has one fish.
+    for group, group_frame in frame.groupby("group", sort=True):
+        desired = int(round(test_fraction * len(group_frame)))
+        current = sum(fish_id in test_ids for fish_id in group_frame["fish_id"])
+        if current < desired:
+            candidates = [
+                str(fish_id)
+                for fish_id in group_frame["fish_id"]
+                if str(fish_id) not in test_ids
+            ]
+            rng.shuffle(candidates)
+            test_ids.update(candidates[: desired - current])
+        elif current > desired:
+            candidates = [
+                str(fish_id)
+                for fish_id in group_frame["fish_id"]
+                if str(fish_id) in test_ids
+            ]
+            rng.shuffle(candidates)
+            for fish_id in candidates[: current - desired]:
+                test_ids.remove(fish_id)
+
+    all_ids = set(frame["fish_id"].astype(str))
+    train_ids = all_ids - test_ids
+    if train_ids & test_ids or train_ids | test_ids != all_ids:
+        raise RuntimeError("Invalid fish-level split.")
+    if not train_ids or not test_ids:
+        raise RuntimeError("Both train and test partitions must be non-empty.")
+
+    assignments = frame[["fish_id", "group", TARGET]].copy()
+    assignments["split"] = assignments["fish_id"].map(
+        lambda fish_id: "test" if str(fish_id) in test_ids else "train"
+    )
+    assignments = assignments.sort_values("fish_id").reset_index(drop=True)
+    return train_ids, test_ids, assignments
+
+
+def severity_mapping(means: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Order arbitrary HMM labels with a prespecified LFP severity direction."""
+    rising = [FEATURES.index(feature) for feature in RISING_FEATURES]
+    falling = [FEATURES.index(feature) for feature in FALLING_FEATURES]
+    score = means[:, rising].mean(axis=1)
+    if falling:
+        score = score - means[:, falling].mean(axis=1)
+    severity_to_raw = np.argsort(score)
+    raw_to_severity = np.empty_like(severity_to_raw)
+    raw_to_severity[severity_to_raw] = np.arange(len(severity_to_raw))
+    return raw_to_severity, severity_to_raw, score
+
+
+def macrostate_mapping(
+    severity_score: np.ndarray,
+    severity_to_raw: np.ndarray,
+    n_macrostates: int = 3,
+) -> np.ndarray:
+    """Collapse adjacent statistical components into interpretable severity states.
+
+    Model-order selection is free to choose more Gaussian components than the
+    simulator's three planted severity categories.  The collapse is based only
+    on the largest gaps in the prespecified LFP severity score; truth labels are
+    not consulted.
+    """
+    ordered_score = np.asarray(severity_score)[severity_to_raw]
+    n_microstates = len(ordered_score)
+    if n_microstates == n_macrostates:
+        return np.arange(n_macrostates, dtype=int)
+    if n_microstates < n_macrostates:
+        return np.rint(
+            np.linspace(0, n_macrostates - 1, n_microstates)
+        ).astype(int)
+    gaps = np.diff(ordered_score)
+    cut_after = set(
+        np.argsort(gaps)[-(n_macrostates - 1) :].astype(int).tolist()
+    )
+    mapping = np.zeros(n_microstates, dtype=int)
+    macrostate = 0
+    for microstate in range(n_microstates):
+        mapping[microstate] = macrostate
+        if microstate in cut_after:
+            macrostate += 1
+    return mapping
+
+
+def _make_hmm(
+    n_states: int,
+    seed: int,
+    restarts: int,
+    n_iter: int = 160,
+) -> DiagonalGaussianHMM:
+    return DiagonalGaussianHMM(
+        n_components=n_states,
+        random_state=seed,
+        n_restarts=restarts,
+        n_iter=n_iter,
+        tol=1e-5,
+        min_covar=1e-3,
+        variance_regularization=0.05,
+        start_pseudocount=0.10,
+        transition_pseudocount=0.25,
+    )
+
+
+def select_state_count(
+    lfp: pd.DataFrame,
+    outcomes: pd.DataFrame,
+    train_ids: set[str],
+    candidates: Iterable[int],
+    seed: int,
+    restarts: int,
+    cv_folds: int,
+) -> tuple[int, dict[int, dict], dict[int, DiagonalGaussianHMM], np.ndarray, np.ndarray]:
+    """Compare K on train-only BIC and train-only fish-level CV likelihood."""
+    candidates = tuple(sorted(set(int(value) for value in candidates)))
+    train_outcomes = outcomes.loc[outcomes["fish_id"].isin(train_ids)].reset_index(drop=True)
+    train_fish = train_outcomes["fish_id"].astype(str).to_numpy()
+    strata = train_outcomes["group"].astype(str).to_numpy()
+    if cv_folds < 2:
+        raise ValueError("cv_folds must be at least two.")
+    splitter = StratifiedKFold(cv_folds, shuffle=True, random_state=seed)
+
+    center, scale = fit_robust_scaler(lfp, train_ids)
+    full_sequences, _, _ = build_sequences(lfp, train_ids, center, scale)
+    n_observations = sum(len(sequence) for sequence in full_sequences)
+    n_features = len(FEATURES)
+    results: dict[int, dict] = {}
+    full_models: dict[int, DiagonalGaussianHMM] = {}
+
+    for n_states in candidates:
+        full_model = _make_hmm(n_states, seed + n_states * 101, restarts).fit(
+            full_sequences
+        )
+        full_models[n_states] = full_model
+        train_loglik = full_model.score(full_sequences)
+        n_parameters = (
+            (n_states - 1)
+            + n_states * (n_states - 1)
+            + 2 * n_states * n_features
+        )
+        bic = -2.0 * train_loglik + n_parameters * math.log(n_observations)
+        fold_loglik: list[float] = []
+
+        for fold, (fit_index, validation_index) in enumerate(
+            splitter.split(train_fish, strata)
+        ):
+            fit_ids = set(train_fish[fit_index])
+            validation_ids = set(train_fish[validation_index])
+            fold_center, fold_scale = fit_robust_scaler(lfp, fit_ids)
+            fit_sequences, _, _ = build_sequences(
+                lfp, fit_ids, fold_center, fold_scale
+            )
+            validation_sequences, _, _ = build_sequences(
+                lfp, validation_ids, fold_center, fold_scale
+            )
+            model = _make_hmm(
+                n_states,
+                seed + n_states * 1_000 + fold,
+                max(1, restarts - 1),
+                n_iter=130,
+            ).fit(fit_sequences)
+            n_validation = sum(len(sequence) for sequence in validation_sequences)
+            fold_loglik.append(model.score(validation_sequences) / n_validation)
+
+        cv_sd = float(np.std(fold_loglik, ddof=1)) if len(fold_loglik) > 1 else 0.0
+        results[n_states] = {
+            "bic": float(bic),
+            "train_log_likelihood": float(train_loglik),
+            "cv_log_likelihood_per_session": float(np.mean(fold_loglik)),
+            "cv_standard_deviation": cv_sd,
+            "cv_standard_error": float(cv_sd / math.sqrt(len(fold_loglik))),
+            "fold_log_likelihoods": [float(value) for value in fold_loglik],
+            "n_parameters": int(n_parameters),
+        }
+
+    selected = min(results, key=lambda value: results[value]["bic"])
+    return selected, results, full_models, center, scale
+
+
+def _ordered_filter(
+    model: DiagonalGaussianHMM,
+    sequence: np.ndarray,
+    severity_to_raw: np.ndarray,
+) -> np.ndarray:
+    return model.filter(sequence)[:, severity_to_raw]
+
+
+def score_test_sessions(
+    model: DiagonalGaussianHMM,
+    lfp: pd.DataFrame,
+    test_ids: set[str],
+    center: np.ndarray,
+    scale: np.ndarray,
+    raw_to_severity: np.ndarray,
+    severity_to_raw: np.ndarray,
+    micro_to_macro: np.ndarray,
+) -> pd.DataFrame:
+    sequences, order, frames = build_sequences(lfp, test_ids, center, scale)
+    rows: list[dict] = []
+    for sequence, fish_id in zip(sequences, order):
+        frame = frames[fish_id]
+        microstates = raw_to_severity[model.predict(sequence)]
+        micro_probabilities = _ordered_filter(model, sequence, severity_to_raw)
+        macro_probabilities = np.column_stack(
+            [
+                micro_probabilities[:, micro_to_macro == macrostate].sum(axis=1)
+                for macrostate in range(3)
+            ]
+        )
+        states = micro_to_macro[microstates]
+        for row_index, (_, source) in enumerate(frame.iterrows()):
+            record = {
+                "fish_id": fish_id,
+                "group": source["group"],
+                "dpf": int(source["dpf"]),
+                "measured_peak_pressure_kpa": float(
+                    source["measured_peak_pressure_kpa"]
+                ),
+                DOSE_INDEX: float(source[DOSE_INDEX]),
+                "hidden_state_TRUTH": int(source[TRUTH_STATE]),
+                "predicted_microstate": int(microstates[row_index]),
+                "predicted_state": int(states[row_index]),
+                "expected_state": float(
+                    macro_probabilities[row_index] @ np.arange(3)
+                ),
+            }
+            for state in range(model.n_components):
+                record[f"p_microstate_{state}"] = float(
+                    micro_probabilities[row_index, state]
+                )
+            for state in range(3):
+                record[f"p_state_{state}"] = float(
+                    macro_probabilities[row_index, state]
+                )
+            rows.append(record)
+    return pd.DataFrame(rows).sort_values(["fish_id", "dpf"]).reset_index(drop=True)
+
+
+def state_recovery_metrics(scored_sessions: pd.DataFrame) -> dict:
+    truth = scored_sessions["hidden_state_TRUTH"].to_numpy(int)
+    predicted = scored_sessions["predicted_state"].to_numpy(int)
+    labels = sorted(set(truth) | set(predicted))
+    matrix = confusion_matrix(truth, predicted, labels=labels)
+    recall = {}
+    for index, label in enumerate(labels):
+        denominator = matrix[index].sum()
+        recall[str(label)] = float(matrix[index, index] / denominator) if denominator else None
+    return {
+        "balanced_accuracy": float(balanced_accuracy_score(truth, predicted)),
+        "macro_f1": float(f1_score(truth, predicted, average="macro")),
+        "adjusted_rand_index": float(adjusted_rand_score(truth, predicted)),
+        "confusion_matrix": matrix.tolist(),
+        "labels": labels,
+        "per_state_recall": recall,
+        "n_test_sessions": int(len(scored_sessions)),
+    }
+
+
+def propagate_ordered_probabilities(
+    probability: np.ndarray,
+    ordered_transition_matrix: np.ndarray,
+    steps: int,
+) -> np.ndarray:
+    """Propagate a filtered ordered-state distribution to a future DPF."""
+    if steps < 0:
+        raise ValueError("Forecast steps cannot be negative.")
+    probability = np.asarray(probability, dtype=float)
+    transition = np.asarray(ordered_transition_matrix, dtype=float)
+    return probability @ np.linalg.matrix_power(transition, steps)
+
+
+def early_prediction(
+    model: DiagonalGaussianHMM,
+    lfp: pd.DataFrame,
+    outcomes: pd.DataFrame,
+    test_ids: set[str],
+    center: np.ndarray,
+    scale: np.ndarray,
+    severity_to_raw: np.ndarray,
+    micro_to_macro: np.ndarray,
+    seed: int,
+    bootstrap_iterations: int,
+) -> tuple[dict, pd.DataFrame]:
+    eligible = outcomes.loc[
+        outcomes["fish_id"].isin(test_ids)
+        & outcomes[TARGET].notna()
+    ].copy()
+    sequences, order, frames = build_sequences(
+        lfp,
+        set(eligible["fish_id"].astype(str)),
+        center,
+        scale,
+        cutoff_dpf=PREDICTION_CUTOFF_DPF,
+    )
+    outcome_lookup = eligible.set_index("fish_id")
+    ordered_transition = model.transmat_[
+        np.ix_(severity_to_raw, severity_to_raw)
+    ]
+    rows: list[dict] = []
+    for sequence, fish_id in zip(sequences, order):
+        probabilities = _ordered_filter(model, sequence, severity_to_raw)
+        source = frames[fish_id].iloc[-1]
+        last_dpf = int(source["dpf"])
+        forecast_steps = TARGET_DPF - last_dpf
+        forecast_probability = propagate_ordered_probabilities(
+            probabilities[-1],
+            ordered_transition,
+            forecast_steps,
+        )
+        current_high_probability = float(
+            probabilities[-1, micro_to_macro == 2].sum()
+        )
+        forecast_high_probability = float(
+            forecast_probability[micro_to_macro == 2].sum()
+        )
+        rows.append(
+            {
+                "fish_id": fish_id,
+                "group": source["group"],
+                "last_lfp_dpf_used": last_dpf,
+                "forecast_steps_to_dpf6": forecast_steps,
+                "filtered_high_state_probability_last_observation": (
+                    current_high_probability
+                ),
+                "forecast_risk_dpf6": forecast_high_probability,
+                TARGET: int(outcome_lookup.loc[fish_id, TARGET]),
+                "batch": int(outcome_lookup.loc[fish_id, "batch"]),
+                DOSE_INDEX: float(outcome_lookup.loc[fish_id, DOSE_INDEX]),
+            }
+        )
+    predictions = pd.DataFrame(rows).sort_values("fish_id").reset_index(drop=True)
+    if (predictions["last_lfp_dpf_used"] > PREDICTION_CUTOFF_DPF).any():
+        raise RuntimeError("Early prediction used a post-cutoff LFP observation.")
+    if (predictions["forecast_steps_to_dpf6"] <= 0).any():
+        raise RuntimeError("Early prediction did not preserve a future forecast horizon.")
+    y = predictions[TARGET].to_numpy(int)
+    score = predictions["forecast_risk_dpf6"].to_numpy(float)
+    if len(np.unique(y)) < 2:
+        raise RuntimeError("Held-out early-prediction set needs both endpoint classes.")
+
+    threshold = 0.5
+    label = score >= threshold
+    true_positive = int(np.sum((label == 1) & (y == 1)))
+    true_negative = int(np.sum((label == 0) & (y == 0)))
+    false_positive = int(np.sum((label == 1) & (y == 0)))
+    false_negative = int(np.sum((label == 0) & (y == 1)))
+    sensitivity = true_positive / max(1, true_positive + false_negative)
+    specificity = true_negative / max(1, true_negative + false_positive)
+
+    rng = np.random.default_rng(seed)
+    auc_boot: list[float] = []
+    ap_boot: list[float] = []
+    for _ in range(bootstrap_iterations):
+        index = rng.integers(0, len(y), len(y))
+        if len(np.unique(y[index])) < 2:
+            continue
+        auc_boot.append(float(roc_auc_score(y[index], score[index])))
+        ap_boot.append(float(average_precision_score(y[index], score[index])))
+
+    metrics = {
+        "prediction_cutoff_dpf": PREDICTION_CUTOFF_DPF,
+        "target_dpf": TARGET_DPF,
+        "forecast_method": (
+            "Causal filtered probability at the last contiguous QC-passing "
+            "4-5 dpf observation, propagated to 6 dpf with the learned "
+            "ordered microstate transition matrix."
+        ),
+        "n_test_fish": int(len(predictions)),
+        "n_positive": int(y.sum()),
+        "roc_auc": float(roc_auc_score(y, score)),
+        "average_precision": float(average_precision_score(y, score)),
+        "brier_score": float(brier_score_loss(y, score)),
+        "threshold": threshold,
+        "sensitivity": float(sensitivity),
+        "specificity": float(specificity),
+        "confusion": {
+            "true_positive": true_positive,
+            "true_negative": true_negative,
+            "false_positive": false_positive,
+            "false_negative": false_negative,
+        },
+        "roc_auc_95ci": [
+            float(np.percentile(auc_boot, 2.5)),
+            float(np.percentile(auc_boot, 97.5)),
+        ],
+        "average_precision_95ci": [
+            float(np.percentile(ap_boot, 2.5)),
+            float(np.percentile(ap_boot, 97.5)),
+        ],
+    }
+    return metrics, predictions
+
+
+def dynamics_metrics(
+    scored_sessions: pd.DataFrame,
+    early_predictions: pd.DataFrame,
+    n_states: int = 3,
+) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+    occupancy_rows: list[dict] = []
+    for (group, dpf), frame in scored_sessions.groupby(["group", "dpf"], sort=True):
+        row = {
+            "group": group,
+            "dpf": int(dpf),
+            "n_sessions": int(len(frame)),
+            "mean_expected_state": float(frame["expected_state"].mean()),
+        }
+        for state in range(n_states):
+            row[f"fraction_state_{state}"] = float(
+                (frame["predicted_state"] == state).mean()
+            )
+        occupancy_rows.append(row)
+    occupancy = pd.DataFrame(occupancy_rows).sort_values(
+        ["group", "dpf"], key=lambda series: series.map(GROUP_ORDER) if series.name == "group" else series
+    )
+
+    transition_rows: list[dict] = []
+    for group in GROUPS:
+        worsening = recovery = stable = total = 0
+        for _, fish in scored_sessions.loc[
+            scored_sessions["group"] == group
+        ].groupby("fish_id"):
+            states = fish.sort_values("dpf")["predicted_state"].to_numpy(int)
+            delta = np.diff(states)
+            worsening += int(np.sum(delta > 0))
+            recovery += int(np.sum(delta < 0))
+            stable += int(np.sum(delta == 0))
+            total += len(delta)
+        transition_rows.append(
+            {
+                "group": group,
+                "n_transitions": total,
+                "worsening_fraction": worsening / total if total else np.nan,
+                "recovery_fraction": recovery / total if total else np.nan,
+                "stable_fraction": stable / total if total else np.nan,
+            }
+        )
+    transitions = pd.DataFrame(transition_rows)
+    pressure_rho, pressure_p = spearmanr(
+        early_predictions[DOSE_INDEX],
+        early_predictions["forecast_risk_dpf6"],
+    )
+    metrics = {
+        "dose_index_vs_dpf6_forecast_risk_spearman_rho": float(pressure_rho),
+        "dose_index_vs_dpf6_forecast_risk_p": float(pressure_p),
+        "group_transition_summary": transitions.to_dict("records"),
+    }
+    return metrics, occupancy, transitions
+
+
+def behavior_validation(
+    early_predictions: pd.DataFrame,
+    dlc: pd.DataFrame,
+) -> tuple[dict, pd.DataFrame]:
+    behavior = dlc.loc[
+        (dlc["dpf"] == TARGET_DPF)
+        & dlc["dlc_tracking_qc_pass"].astype(bool)
+    ].copy()
+    merged = early_predictions.merge(
+        behavior[
+            [
+                "fish_id",
+                "dlc_behavior_abnormality_index",
+                "dlc_mean_speed_mm_s",
+                "dlc_rest_fraction",
+                "dlc_whirlpool_rate_per_min",
+                "manual_pts_stage_TRUTH",
+            ]
+        ],
+        on="fish_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    rho, p_value = spearmanr(
+        merged["forecast_risk_dpf6"],
+        merged["dlc_behavior_abnormality_index"],
+    )
+
+    # Partial rank correlation after removing the planted dose and batch terms.
+    x = rankdata(merged["forecast_risk_dpf6"])
+    y = rankdata(merged["dlc_behavior_abnormality_index"])
+    group_dummies = pd.get_dummies(merged["group"], drop_first=True).to_numpy(float)
+    batch_dummies = pd.get_dummies(merged["batch"], drop_first=True).to_numpy(float)
+    covariates = np.column_stack(
+        [
+            np.ones(len(merged)),
+            np.log1p(merged[DOSE_INDEX].to_numpy(float)),
+            group_dummies,
+            batch_dummies,
+        ]
+    )
+    x_residual = x - covariates @ np.linalg.lstsq(covariates, x, rcond=None)[0]
+    y_residual = y - covariates @ np.linalg.lstsq(covariates, y, rcond=None)[0]
+    partial_rho, partial_p = spearmanr(x_residual, y_residual)
+    metrics = {
+        "n_fish": int(len(merged)),
+        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": float(rho),
+        "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": float(p_value),
+        "dose_batch_adjusted_partial_spearman_rho": float(partial_rho),
+        "dose_batch_adjusted_partial_spearman_p": float(partial_p),
+        "note": (
+            "DeepLabCut-like values are simulated validation data; severe-dose "
+            "locomotor speed is intentionally non-monotonic."
+        ),
+    }
+    return metrics, merged
+
+
+def _json_ready(value):
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    return value
+
+
+def make_figures(
+    output_dir: Path,
+    selection: dict[int, dict],
+    recovery: dict,
+    early: dict,
+    early_predictions: pd.DataFrame,
+    occupancy: pd.DataFrame,
+    behavior: pd.DataFrame,
+    transition_matrix: np.ndarray,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    states = sorted(selection)
+
+    fig, axis_left = plt.subplots(figsize=(7.2, 4.6))
+    axis_left.plot(states, [selection[k]["bic"] for k in states], "o-", color="#0F766E")
+    axis_left.set_xlabel("Hidden states (K)")
+    axis_left.set_ylabel("Train-only BIC", color="#0F766E")
+    axis_left.set_xticks(states)
+    axis_right = axis_left.twinx()
+    axis_right.errorbar(
+        states,
+        [selection[k]["cv_log_likelihood_per_session"] for k in states],
+        yerr=[selection[k]["cv_standard_error"] for k in states],
+        fmt="s-",
+        color="#C2410C",
+        capsize=3,
+    )
+    axis_right.set_ylabel("Train-only CV log likelihood/session", color="#C2410C")
+    axis_left.set_title("TBI HMM model-order selection")
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_model_selection.png", dpi=160)
+    plt.close(fig)
+
+    matrix = np.asarray(recovery["confusion_matrix"])
+    fig, axis = plt.subplots(figsize=(5.2, 4.6))
+    image = axis.imshow(matrix, cmap="Blues")
+    for row in range(matrix.shape[0]):
+        for column in range(matrix.shape[1]):
+            axis.text(column, row, str(matrix[row, column]), ha="center", va="center")
+    axis.set_xlabel("Predicted severity state")
+    axis.set_ylabel("Planted state (validation only)")
+    axis.set_xticks(range(len(recovery["labels"])), recovery["labels"])
+    axis.set_yticks(range(len(recovery["labels"])), recovery["labels"])
+    axis.set_title("Held-out state recovery")
+    fig.colorbar(image, ax=axis, shrink=0.8)
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_state_confusion.png", dpi=160)
+    plt.close(fig)
+
+    y = early_predictions[TARGET].to_numpy(int)
+    risk = early_predictions["forecast_risk_dpf6"].to_numpy(float)
+    fpr, tpr, _ = roc_curve(y, risk)
+    fig, axis = plt.subplots(figsize=(5.8, 4.8))
+    axis.plot(fpr, tpr, lw=2.2, color="#0F766E", label=f"AUC = {early['roc_auc']:.3f}")
+    axis.plot([0, 1], [0, 1], "--", color="#64748B")
+    axis.set_xlabel("False-positive rate")
+    axis.set_ylabel("True-positive rate")
+    axis.set_title("4-5 dpf LFP → 6 dpf planted endpoint")
+    axis.legend(loc="lower right")
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_early_prediction_roc.png", dpi=160)
+    plt.close(fig)
+
+    fig, axis = plt.subplots(figsize=(8.2, 5.0))
+    for group in GROUPS:
+        frame = occupancy.loc[occupancy["group"] == group].sort_values("dpf")
+        axis.plot(
+            frame["dpf"],
+            frame["mean_expected_state"],
+            "o-",
+            label=group,
+        )
+    axis.set_xticks(OBSERVATION_DPF)
+    axis.set_xlabel("dpf")
+    axis.set_ylabel("Mean filtered expected state (held-out fish)")
+    axis.set_title("Synthetic post-TBI electrophysiology trajectories")
+    axis.legend(frameon=False, ncol=2)
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_state_trajectories.png", dpi=160)
+    plt.close(fig)
+
+    fig, axis = plt.subplots(figsize=(5.5, 4.8))
+    image = axis.imshow(transition_matrix, cmap="YlGnBu", vmin=0, vmax=1)
+    for row in range(transition_matrix.shape[0]):
+        for column in range(transition_matrix.shape[1]):
+            axis.text(
+                column,
+                row,
+                f"{transition_matrix[row, column]:.2f}",
+                ha="center",
+                va="center",
+            )
+    axis.set_xlabel("To severity state")
+    axis.set_ylabel("From severity state")
+    axis.set_title("Pooled HMM transition matrix")
+    fig.colorbar(image, ax=axis, shrink=0.8)
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_transition_matrix.png", dpi=160)
+    plt.close(fig)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.7))
+    for group in GROUPS:
+        frame = behavior.loc[behavior["group"] == group]
+        axes[0].scatter(
+            frame["forecast_risk_dpf6"],
+            frame["dlc_behavior_abnormality_index"],
+            s=28,
+            alpha=0.72,
+            label=group,
+        )
+        axes[1].scatter(
+            frame["forecast_risk_dpf6"],
+            frame["dlc_mean_speed_mm_s"],
+            s=28,
+            alpha=0.72,
+        )
+    axes[0].set_xlabel("Markov-forecast DPF6 high-state probability")
+    axes[0].set_ylabel("Synthetic DLC abnormality index at DPF6")
+    axes[0].legend(frameon=False, fontsize=8)
+    axes[1].set_xlabel("Markov-forecast DPF6 high-state probability")
+    axes[1].set_ylabel("Synthetic DLC mean speed at DPF6 (mm/s)")
+    axes[1].set_title("Speed is intentionally non-monotonic")
+    fig.suptitle("DeepLabCut-style validation (synthetic only)")
+    fig.tight_layout()
+    fig.savefig(output_dir / "tbi_dlc_validation.png", dpi=160)
+    plt.close(fig)
+
+
+def write_report(metrics: dict, output_path: Path) -> None:
+    selection = metrics["model_selection"]
+    selected = metrics["selected_states"]
+    recovery = metrics["state_recovery"]
+    early = metrics["early_prediction"]
+    dynamics = metrics["dynamics"]
+    behavior = metrics["behavior_validation"]
+    selected_row = selection[str(selected)]
+    text = f"""# Synthetic larval-zebrafish TBI Markov-model results
+
+> **Benchmark only.** Every observation, state, endpoint, and DeepLabCut-like
+> metric is synthetic. These results are not evidence of post-traumatic
+> epilepsy, treatment efficacy, or feasibility of repeated invasive recordings.
+
+## Run scope
+
+- 240 simulated larvae across sham and 3/5/7-drop TBI arms
+- TBI at 3 dpf; LFP/behavior sessions at 4-6 dpf
+- LFP sessions failing the prespecified electrode-shift/noise QC remain in the
+  dataset but are excluded from modeling; a QC gap terminates the usable
+  4 dpf-based prefix rather than being compressed into one transition
+- positive heavy-tailed features receive `log1p`; robust preprocessing is fit
+  on training fish only; the split is at the fish level
+- selected **K={selected}** by lowest train-only BIC ({selected_row['bic']:.1f});
+  train-only CV log likelihood/session {selected_row['cv_log_likelihood_per_session']:.3f}
+- the K statistical components are severity ordered without truth labels, then
+  adjacent components are collapsed to the simulator's three validation
+  macrostates at the two largest prespecified-score gaps
+
+## Held-out latent-state recovery
+
+- balanced accuracy: **{recovery['balanced_accuracy']:.3f}**
+- macro F1: **{recovery['macro_f1']:.3f}**
+- adjusted Rand index: **{recovery['adjusted_rand_index']:.3f}**
+
+Per-session planted states are used only in this scoring step. The planted 6
+dpf endpoint is used to outcome-stratify the fish-level split and to score the
+forecast; neither form of truth enters HMM features or fitting.
+
+## Causal early prediction
+
+Only an uninterrupted, QC-passing 4-5 dpf LFP prefix was used. Its final
+filtered state distribution was propagated through the learned transition
+matrix to predict the separate planted 6 dpf high-burden endpoint:
+
+- held-out fish: **{early['n_test_fish']}** ({early['n_positive']} positive)
+- ROC-AUC: **{early['roc_auc']:.3f}** (bootstrap 95% CI
+  {early['roc_auc_95ci'][0]:.3f}-{early['roc_auc_95ci'][1]:.3f})
+- average precision: **{early['average_precision']:.3f}**
+- Brier score: **{early['brier_score']:.3f}**
+- sensitivity/specificity at probability 0.5:
+  **{early['sensitivity']:.3f}/{early['specificity']:.3f}**
+
+## Dose/dynamics and behavior checks
+
+- synthetic dose index vs DPF6 forecast risk: Spearman
+  **rho={dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho']:.3f}**
+- DPF6 forecast risk vs DPF6 synthetic DLC abnormality: Spearman
+  **rho={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho']:.3f}**
+- after synthetic dose/batch adjustment: partial Spearman
+  **rho={behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}**
+
+Locomotor speed is not treated as a severity ruler: the simulator permits
+hyperactivity at moderate injury and stunned/inactive behavior at high injury.
+
+## Method boundaries
+
+- [Locskai et al.](https://doi.org/10.1242/bio.060601) motivates the
+  blast-pressure syringe insult and repeated-hit dose axis.
+- [Eimon et al.](https://doi.org/10.1038/s41467-017-02404-4) motivates LFP
+  acquisition, QC, overlapping-window higher moments, and ICA complexity.
+- [Mathis et al.](https://doi.org/10.1038/s41593-018-0209-y) and
+  [Nath et al.](https://doi.org/10.1038/s41596-019-0176-0) motivate the
+  DeepLabCut validation workflow.
+
+Neither source paper reports this exact 4-6 dpf repeated same-fish LFP design.
+"""
+    output_path.write_text(text, encoding="utf-8")
+
+
+def run_analysis(
+    lfp: pd.DataFrame,
+    outcomes: pd.DataFrame,
+    dlc: pd.DataFrame,
+    output_dir: Path | str = RESULTS_DIR,
+    seed: int = SEED,
+    test_fraction: float = 0.30,
+    candidates: Iterable[int] = (2, 3, 4),
+    restarts: int = 3,
+    cv_folds: int = 3,
+    bootstrap_iterations: int = 1_000,
+) -> dict:
+    output_dir = Path(output_dir)
+    figures_dir = output_dir / "figures"
+    tables_dir = output_dir / "tables"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    model_lfp = qc_sessions(lfp)
+    train_ids, test_ids, assignments = fish_level_split(
+        outcomes, test_fraction=test_fraction, seed=seed
+    )
+    selected, selection, models, center, scale = select_state_count(
+        model_lfp,
+        outcomes,
+        train_ids,
+        candidates,
+        seed,
+        restarts,
+        cv_folds,
+    )
+    model = models[selected]
+    model_sequences, model_fish_order, _ = build_sequences(
+        model_lfp,
+        set(outcomes["fish_id"].astype(str)),
+        center,
+        scale,
+    )
+    raw_to_severity, severity_to_raw, severity_score = severity_mapping(model.means_)
+    micro_to_macro = macrostate_mapping(severity_score, severity_to_raw)
+    transition_matrix = model.transmat_[np.ix_(severity_to_raw, severity_to_raw)]
+    scored_sessions = score_test_sessions(
+        model,
+        model_lfp,
+        test_ids,
+        center,
+        scale,
+        raw_to_severity,
+        severity_to_raw,
+        micro_to_macro,
+    )
+    recovery = state_recovery_metrics(scored_sessions)
+    early, early_predictions = early_prediction(
+        model,
+        model_lfp,
+        outcomes,
+        test_ids,
+        center,
+        scale,
+        severity_to_raw,
+        micro_to_macro,
+        seed + 10,
+        bootstrap_iterations,
+    )
+    dynamics, occupancy, group_transitions = dynamics_metrics(
+        scored_sessions, early_predictions
+    )
+    behavior, behavior_frame = behavior_validation(early_predictions, dlc)
+
+    metrics = {
+        "benchmark_type": "synthetic_only",
+        "seed": seed,
+        "split": {
+            "n_train_fish": len(train_ids),
+            "n_test_fish": len(test_ids),
+            "fish_overlap": len(train_ids & test_ids),
+        },
+        "dataset_qc": {
+            "n_fish": int(len(outcomes)),
+            "n_lfp_sessions": int(len(lfp)),
+            "n_qc_pass_sessions": int(model_lfp.shape[0]),
+            "qc_pass_rate": float(model_lfp.shape[0] / len(lfp)),
+            "n_contiguous_model_sessions": int(
+                sum(len(sequence) for sequence in model_sequences)
+            ),
+            "n_model_fish_with_4dpf_baseline": int(len(model_fish_order)),
+            "sequence_rule": (
+                "Use the uninterrupted QC-passing prefix beginning at 4 dpf; "
+                "truncate at the first gap and exclude fish missing 4 dpf."
+            ),
+            "survival_by_group": outcomes.groupby("group")[
+                "survived_to_6dpf"
+            ].mean().to_dict(),
+        },
+        "selected_states": int(selected),
+        "model_selection": {str(key): value for key, value in selection.items()},
+        "severity_alignment": {
+            "raw_to_severity": raw_to_severity.tolist(),
+            "severity_to_raw": severity_to_raw.tolist(),
+            "prespecified_score_by_raw_state": severity_score.tolist(),
+            "microstate_to_macrostate": micro_to_macro.tolist(),
+            "macrostate_collapse_rule": (
+                "Adjacent severity-ordered components are split at the two "
+                "largest prespecified-score gaps; truth labels are not used."
+            ),
+        },
+        "state_recovery": recovery,
+        "early_prediction": early,
+        "dynamics": dynamics,
+        "behavior_validation": behavior,
+        "ordered_start_probabilities": model.startprob_[severity_to_raw].tolist(),
+        "ordered_transition_matrix": transition_matrix.tolist(),
+        "ordered_emission_means_robust_scaled": model.means_[severity_to_raw].tolist(),
+        "features": list(FEATURES),
+        "preprocessing": {
+            "fit_partition": "training fish only",
+            "transform": (
+                "log1p variance, kurtosis, fourth-power mean, and event rate; "
+                "then median/IQR scaling"
+            ),
+            "center": center.tolist(),
+            "scale_iqr": scale.tolist(),
+        },
+        "critical_caveat": (
+            "All data and endpoints are synthetic. Daily repeated 4-6 dpf LFP "
+            "after 3 dpf TBI is a hypothetical benchmark protocol."
+        ),
+    }
+
+    assignments.to_csv(tables_dir / "tbi_split_assignments.csv", index=False)
+    scored_sessions.to_csv(tables_dir / "tbi_scored_test_sessions.csv", index=False)
+    early_predictions.to_csv(tables_dir / "tbi_early_predictions.csv", index=False)
+    occupancy.to_csv(tables_dir / "tbi_state_occupancy.csv", index=False)
+    group_transitions.to_csv(
+        tables_dir / "tbi_group_transition_summary.csv",
+        index=False,
+    )
+    pd.DataFrame(
+        transition_matrix,
+        index=[f"from_state_{state}" for state in range(selected)],
+        columns=[f"to_state_{state}" for state in range(selected)],
+    ).to_csv(tables_dir / "tbi_transition_matrix.csv")
+    (output_dir / "tbi_model_metrics.json").write_text(
+        json.dumps(_json_ready(metrics), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md")
+    make_figures(
+        figures_dir,
+        selection,
+        recovery,
+        early,
+        early_predictions,
+        occupancy,
+        behavior_frame,
+        transition_matrix,
+    )
+    return metrics
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
+    parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR)
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--test-fraction", type=float, default=0.30)
+    parser.add_argument("--states", type=int, nargs="+", default=[2, 3, 4])
+    parser.add_argument("--restarts", type=int, default=3)
+    parser.add_argument("--cv-folds", type=int, default=3)
+    parser.add_argument("--bootstrap-iterations", type=int, default=1_000)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    lfp, outcomes, dlc = load_dataset(
+        args.data_dir / LFP_CSV.name,
+        args.data_dir / OUTCOMES_CSV.name,
+        args.data_dir / DLC_CSV.name,
+    )
+    metrics = run_analysis(
+        lfp,
+        outcomes,
+        dlc,
+        output_dir=args.output_dir,
+        seed=args.seed,
+        test_fraction=args.test_fraction,
+        candidates=args.states,
+        restarts=args.restarts,
+        cv_folds=args.cv_folds,
+        bootstrap_iterations=args.bootstrap_iterations,
+    )
+    print(
+        f"Selected K={metrics['selected_states']}; held-out state balanced accuracy "
+        f"{metrics['state_recovery']['balanced_accuracy']:.3f}; causal early AUC "
+        f"{metrics['early_prediction']['roc_auc']:.3f}"
+    )
+    print(f"Outputs written to {args.output_dir}")
+
+
+if __name__ == "__main__":
+    main()

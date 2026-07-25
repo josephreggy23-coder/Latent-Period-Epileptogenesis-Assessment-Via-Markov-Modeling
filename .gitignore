@@ -3,9 +3,19 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .ipynb_checkpoints/
+.pytest-tmp/
+.pytest_cache/
+.venv/
+build/
+dist/
+.coverage
+htmlcov/
 
 # OS / editor
 .DS_Store
 Thumbs.db
 ~$*            # Excel lock files
 *.tmp
+*.inspect.ndjson
+.idea/
+.vscode/

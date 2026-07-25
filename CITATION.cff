@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this synthetic benchmark, please cite the software repository."
+title: "Larval Zebrafish TBI Markov Modeling"
+type: software
+version: 1.0.0
+date-released: 2026-07-24
+authors:
+  - family-names: "David"
+    given-names: "Joseph Regito"
+    email: "joseph.reggy23@gmail.com"
+repository-code: "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling"
+keywords:
+  - computational neuroscience
+  - electrophysiology
+  - hidden Markov model
+  - traumatic brain injury
+  - zebrafish

@@ -1,0 +1,43 @@
+{
+  "dataset_id": "synthetic_larval_zebrafish_tbi_4_6dpf_v1",
+  "is_synthetic": true,
+  "simulator_seed": 42,
+  "n_per_arm": 60,
+  "n_fish": 240,
+  "n_lfp_sessions": 706,
+  "injury_dpf": 3,
+  "observation_dpf": [
+    4,
+    5,
+    6
+  ],
+  "groups": [
+    "sham",
+    "tbi_low",
+    "tbi_moderate",
+    "tbi_high"
+  ],
+  "endpoint_definition": "high_burden_state_dpf6_TRUTH=1 only when the planted state at 6 dpf is the high-burden state (state 2); prior high-state membership is not required.",
+  "dose_index_definition": "cumulative_pressure_burden_kpa_hits=synthetic measured peak kPa multiplied by hit count; units are kPa-hits and it is not a measured pressure integral.",
+  "source_urls": [
+    "https://doi.org/10.1242/bio.060601",
+    "https://doi.org/10.1038/s41467-017-02404-4",
+    "https://doi.org/10.1038/s41593-018-0209-y",
+    "https://doi.org/10.1038/s41596-019-0176-0"
+  ],
+  "critical_caveat": "The papers do not report repeated daily LFP from the same TBI larvae at 4-6 dpf. This longitudinal schedule, all numerical emissions, the 195 kPa center, and all DeepLabCut values are simulator assumptions.",
+  "files": {
+    "lfp_timeseries": {
+      "path": "tbi_4_6dpf_lfp_timeseries.csv",
+      "sha256": "409a6da296188692c428ff3b56464e0d82ad4ebb3098df4b20d2fd394249112d"
+    },
+    "fish_outcomes": {
+      "path": "tbi_4_6dpf_fish_outcomes.csv",
+      "sha256": "08aea81440a230ccb17b6e858eef061a5d6b8b7e5163d4c18618841c9f30f160"
+    },
+    "dlc_behavior": {
+      "path": "tbi_4_6dpf_dlc_behavior.csv",
+      "sha256": "aeb4a546fb8ab6326899b4d65419d211e5af2e094d5358ff805af80b2d9b9769"
+    }
+  }
+}
