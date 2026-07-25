@@ -1,0 +1,129 @@
+fish_id,arm,state_4h,state_20h,peak_state,risk_pct,model_call,actual,result,split
+F002,Sham,1,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F011,Sham,1,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F012,Sham,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),test
+F017,Sham,1,2,2,100.0,FLAG,sensitized,TP (correctly flagged),train
+F021,Sham,0,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F029,Sham,1,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F032,Sham,0,1,1,99.9,FLAG,resistant,FP (false alarm),test
+F030,Sham,0,0,0,69.9,clear,resistant,TN (correctly cleared),test
+F010,Sham,0,1,1,55.6,clear,resistant,TN (correctly cleared),train
+F008,Sham,0,0,0,22.8,clear,resistant,TN (correctly cleared),train
+F005,Sham,0,0,0,0.6,clear,resistant,TN (correctly cleared),train
+F007,Sham,0,0,0,0.5,clear,resistant,TN (correctly cleared),train
+F016,Sham,0,0,0,0.3,clear,resistant,TN (correctly cleared),test
+F020,Sham,0,0,0,0.3,clear,resistant,TN (correctly cleared),test
+F026,Sham,0,0,0,0.3,clear,resistant,TN (correctly cleared),test
+F024,Sham,0,0,0,0.2,clear,resistant,TN (correctly cleared),train
+F003,Sham,0,0,0,0.1,clear,resistant,TN (correctly cleared),train
+F004,Sham,0,0,0,0.1,clear,resistant,TN (correctly cleared),train
+F001,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F006,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F009,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F013,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F014,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F015,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F018,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F019,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F022,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F023,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F025,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F027,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F028,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F031,Sham,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F033,SE only,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F039,SE only,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F043,SE only,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F044,SE only,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),test
+F048,SE only,1,2,2,100.0,FLAG,resistant,FP (false alarm),train
+F052,SE only,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F059,SE only,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),test
+F062,SE only,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),test
+F055,SE only,0,1,1,99.9,FLAG,sensitized,TP (correctly flagged),train
+F067,SE only,0,1,1,99.8,FLAG,sensitized,TP (correctly flagged),test
+F060,SE only,0,1,1,99.6,FLAG,resistant,FP (false alarm),test
+F069,SE only,0,1,1,99.5,FLAG,sensitized,TP (correctly flagged),train
+F046,SE only,0,1,1,98.8,FLAG,resistant,FP (false alarm),test
+F051,SE only,0,0,0,46.8,clear,resistant,TN (correctly cleared),train
+F053,SE only,0,0,0,16.2,clear,resistant,TN (correctly cleared),train
+F054,SE only,0,0,0,6.6,clear,resistant,TN (correctly cleared),test
+F057,SE only,0,0,0,1.8,clear,resistant,TN (correctly cleared),train
+F034,SE only,0,0,0,0.4,clear,resistant,TN (correctly cleared),train
+F036,SE only,0,0,0,0.3,clear,resistant,TN (correctly cleared),train
+F068,SE only,0,0,0,0.3,clear,resistant,TN (correctly cleared),train
+F035,SE only,0,0,0,0.2,clear,resistant,TN (correctly cleared),train
+F038,SE only,0,0,0,0.2,clear,resistant,TN (correctly cleared),train
+F063,SE only,0,0,0,0.2,clear,sensitized,FN (missed),train
+F070,SE only,0,0,0,0.2,clear,resistant,TN (correctly cleared),train
+F047,SE only,0,0,0,0.1,clear,resistant,TN (correctly cleared),train
+F064,SE only,0,0,0,0.1,clear,resistant,TN (correctly cleared),test
+F037,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F040,SE only,0,0,0,0.0,clear,sensitized,FN (missed),train
+F041,SE only,0,0,0,0.0,clear,sensitized,FN (missed),train
+F042,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F045,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F049,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F050,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F056,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F058,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F061,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F065,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F066,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F071,SE only,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F102,SE+Vehicle,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F105,SE+Vehicle,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F108,SE+Vehicle,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F116,SE+Vehicle,1,2,2,100.0,FLAG,sensitized,TP (correctly flagged),train
+F117,SE+Vehicle,1,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F118,SE+Vehicle,0,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F119,SE+Vehicle,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F123,SE+Vehicle,1,1,1,100.0,FLAG,resistant,FP (false alarm),test
+F124,SE+Vehicle,1,1,1,100.0,FLAG,resistant,FP (false alarm),train
+F126,SE+Vehicle,1,2,2,100.0,FLAG,sensitized,TP (correctly flagged),train
+F127,SE+Vehicle,1,2,2,100.0,FLAG,sensitized,TP (correctly flagged),train
+F128,SE+Vehicle,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),test
+F120,SE+Vehicle,0,1,1,99.9,FLAG,sensitized,TP (correctly flagged),train
+F113,SE+Vehicle,0,1,1,97.5,FLAG,sensitized,TP (correctly flagged),test
+F106,SE+Vehicle,0,1,1,94.2,FLAG,sensitized,TP (correctly flagged),test
+F112,SE+Vehicle,0,0,0,40.3,clear,resistant,TN (correctly cleared),test
+F104,SE+Vehicle,0,0,0,7.2,clear,sensitized,FN (missed),test
+F111,SE+Vehicle,0,0,0,0.3,clear,sensitized,FN (missed),train
+F103,SE+Vehicle,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F107,SE+Vehicle,0,0,0,0.0,clear,sensitized,FN (missed),train
+F109,SE+Vehicle,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F110,SE+Vehicle,0,0,0,0.0,clear,sensitized,FN (missed),test
+F114,SE+Vehicle,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F115,SE+Vehicle,0,0,0,0.0,clear,sensitized,FN (missed),train
+F121,SE+Vehicle,0,0,0,0.0,clear,sensitized,FN (missed),train
+F122,SE+Vehicle,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F125,SE+Vehicle,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F080,SE+VPA,1,1,1,100.0,FLAG,sensitized,TP (correctly flagged),train
+F088,SE+VPA,1,2,2,100.0,FLAG,resistant,FP (false alarm),test
+F093,SE+VPA,0,1,1,98.5,FLAG,resistant,FP (false alarm),train
+F084,SE+VPA,0,1,1,96.1,FLAG,sensitized,TP (correctly flagged),train
+F098,SE+VPA,0,1,1,68.2,clear,resistant,TN (correctly cleared),train
+F076,SE+VPA,0,0,0,61.8,clear,resistant,TN (correctly cleared),test
+F087,SE+VPA,0,0,0,6.8,clear,resistant,TN (correctly cleared),train
+F099,SE+VPA,0,0,0,2.7,clear,resistant,TN (correctly cleared),train
+F089,SE+VPA,0,0,0,1.5,clear,resistant,TN (correctly cleared),train
+F083,SE+VPA,0,0,0,1.0,clear,sensitized,FN (missed),test
+F082,SE+VPA,0,0,0,0.9,clear,resistant,TN (correctly cleared),test
+F077,SE+VPA,0,0,0,0.5,clear,resistant,TN (correctly cleared),train
+F092,SE+VPA,0,0,0,0.3,clear,resistant,TN (correctly cleared),test
+F090,SE+VPA,0,0,0,0.2,clear,resistant,TN (correctly cleared),test
+F079,SE+VPA,0,0,0,0.1,clear,resistant,TN (correctly cleared),train
+F101,SE+VPA,0,0,0,0.1,clear,resistant,TN (correctly cleared),train
+F072,SE+VPA,0,0,0,0.0,clear,sensitized,FN (missed),train
+F073,SE+VPA,0,0,0,0.0,clear,sensitized,FN (missed),train
+F074,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F075,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F078,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F081,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F085,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F086,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F091,SE+VPA,0,0,0,0.0,clear,sensitized,FN (missed),test
+F094,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),test
+F095,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F096,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train
+F097,SE+VPA,0,0,0,0.0,clear,sensitized,FN (missed),train
+F100,SE+VPA,0,0,0,0.0,clear,resistant,TN (correctly cleared),train

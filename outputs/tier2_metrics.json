@@ -1,0 +1,24 @@
+{
+  "beta_mp_median": 1.068477749824524,
+  "beta_mp_hdi": [
+    0.4514089524745941,
+    1.698767066001892
+  ],
+  "odds_ratio_median": 2.910944938659668,
+  "odds_ratio_hdi": [
+    1.4236986637115479,
+    5.153991222381592
+  ],
+  "p_beta_gt0": 0.998,
+  "tau_median": 0.5951911211013794,
+  "early": {
+    "auc": 0.8785714285714287,
+    "accuracy": 0.9166666666666666,
+    "threshold": 0.8074125139792803,
+    "n_test": 24,
+    "n_test_epileptic": 10,
+    "flagged_before_seizure": 10,
+    "mean_lead_time_h": 3.4,
+    "median_lead_time_h": 2.0
+  }
+}
