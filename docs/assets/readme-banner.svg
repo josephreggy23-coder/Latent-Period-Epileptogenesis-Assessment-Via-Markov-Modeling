@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title description">
+  <title id="title">Latent-period epileptogenesis assessment via Markov state modeling</title>
+  <desc id="description">A conceptual workflow from traumatic brain injury through longitudinal electrophysiology, latent-state modeling, model comparison, and held-out endpoint assessment.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#081426"/>
+      <stop offset="0.58" stop-color="#102D3A"/>
+      <stop offset="1" stop-color="#123B43"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#C7F9F1" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="420" rx="28" fill="url(#background)"/>
+  <rect width="1200" height="420" rx="28" fill="url(#grid)"/>
+  <path d="M0 350 C210 298 365 404 575 348 C790 291 989 350 1200 286 L1200 420 L0 420 Z" fill="#2DD4BF" opacity="0.055"/>
+
+  <g transform="translate(72 70)">
+    <rect width="178" height="30" rx="15" fill="#F59E0B" opacity="0.16"/>
+    <circle cx="18" cy="15" r="5" fill="#FBBF24"/>
+    <text x="31" y="20" fill="#FDE68A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.8">RESEARCH SOFTWARE</text>
+
+    <text x="0" y="92" fill="#F8FAFC" font-family="Inter, Segoe UI, Arial,sans-serif" font-size="43" font-weight="750">Latent-period</text>
+    <text x="0" y="142" fill="#F8FAFC" font-family="Inter, Segoe UI, Arial,sans-serif" font-size="40" font-weight="750">epileptogenesis assessment</text>
+    <text x="0" y="183" fill="#99F6E4" font-family="Inter, Segoe UI, Arial,sans-serif" font-size="25" font-weight="600">via Markov state modeling</text>
+
+    <text x="0" y="230" fill="#CBD5E1" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17">
+      Longitudinal post-TBI LFP • interpretable transitions • early risk
+    </text>
+
+    <rect x="0" y="264" width="468" height="45" rx="12" fill="#0F172A" fill-opacity="0.58" stroke="#F59E0B" stroke-opacity="0.6"/>
+    <text x="18" y="292" fill="#FDE68A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="0.55">
+      MEASURED-DATA ANALYSIS  •  INTERPRETABLE HMM
+    </text>
+  </g>
+
+  <g transform="translate(645 68)" filter="url(#shadow)">
+    <rect width="480" height="270" rx="24" fill="#F8FAFC" fill-opacity="0.97"/>
+    <text x="28" y="36" fill="#475569" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="1.1">LONGITUDINAL ANALYSIS WORKFLOW</text>
+
+    <g transform="translate(28 63)">
+      <rect width="116" height="151" rx="16" fill="#E6FFFB" stroke="#5EEAD4"/>
+      <text x="16" y="25" fill="#0F766E" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">LFP records</text>
+      <text x="16" y="44" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">7 session features</text>
+      <path d="M15 88 L25 88 L31 71 L39 112 L48 60 L57 101 L64 82 L72 89 L81 78 L90 93 L101 88"
+            fill="none" stroke="url(#signal)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="16" y="132" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">QC-passing prefix</text>
+    </g>
+
+    <path d="M151 139 H179" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M174 133 L181 139 L174 145" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g transform="translate(181 63)">
+      <rect width="116" height="151" rx="16" fill="#EFF6FF" stroke="#7DD3FC"/>
+      <text x="18" y="25" fill="#075985" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Gaussian HMM</text>
+      <text x="18" y="44" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">4 latent states</text>
+      <path d="M34 79 L79 62 M35 79 L78 100 M79 62 L79 100" fill="none" stroke="#94A3B8" stroke-width="2"/>
+      <circle cx="34" cy="79" r="12" fill="#14B8A6"/>
+      <circle cx="79" cy="62" r="12" fill="#38BDF8"/>
+      <circle cx="79" cy="100" r="12" fill="#F59E0B"/>
+      <text x="18" y="132" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">Markov propagation</text>
+    </g>
+
+    <path d="M304 139 H332" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M327 133 L334 139 L327 145" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g transform="translate(334 63)">
+      <rect width="118" height="151" rx="16" fill="#FFF7ED" stroke="#FDBA74"/>
+      <text x="16" y="25" fill="#9A3412" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">Endpoint</text>
+      <text x="16" y="44" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">held-out assessment</text>
+      <path d="M22 108 A37 37 0 0 1 96 108" fill="none" stroke="#E2E8F0" stroke-width="9" stroke-linecap="round"/>
+      <path d="M22 108 A37 37 0 0 1 81 78" fill="none" stroke="#F59E0B" stroke-width="9" stroke-linecap="round"/>
+      <text x="59" y="105" text-anchor="middle" fill="#0F172A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="750">risk</text>
+      <text x="16" y="132" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">no target-day inputs</text>
+    </g>
+
+    <g transform="translate(28 235)">
+      <circle cx="5" cy="5" r="5" fill="#14B8A6"/>
+      <text x="17" y="10" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">subject-level split</text>
+      <circle cx="126" cy="5" r="5" fill="#38BDF8"/>
+      <text x="138" y="10" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">train-only preprocessing</text>
+      <circle cx="298" cy="5" r="5" fill="#F59E0B"/>
+      <text x="310" y="10" fill="#64748B" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="11">held-out scoring</text>
+    </g>
+  </g>
+
+  <text x="1128" y="389" text-anchor="end" fill="#94A3B8" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12">longitudinal electrophysiology research</text>
+</svg>
