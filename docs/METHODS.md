@@ -41,6 +41,17 @@ Pose-derived behavior is scored per event by a blinded reviewer using
 Baraban/Locskai stages, then aggregated per fish-session. It is an independent
 validation channel and never an HMM input.
 
+For a reduced-camera pilot, the protocol permits a prespecified central C5:F8
+block containing 16 monitored fish—four from each injury condition—with a
+single top-down global-shutter camera. Treatment positions are balanced within
+the block and rotated between plates/clutches; fish are assigned before any
+behavioral outcome is known. Fixed 256 × 256 px well crops are calibrated at
+the well plane and analyzed independently with DeepLabCut. Fish outside the
+recorded region are `NA` for the video-derived endpoint unless another complete,
+prespecified video acquisition exists; they are never counted as behavioral
+negatives. Camera, illumination, bandwidth, and validation requirements are in
+[EXPERIMENTAL_PROTOCOL.md §3–4](EXPERIMENTAL_PROTOCOL.md#reduced-camera-pilot-layout-proposed).
+
 Sessions with no scored event are materialized with zero event rates rather than
 dropped: "no scored behavior" is an observation, and omitting them would
 restrict the validation to the abnormal subset and bias it.

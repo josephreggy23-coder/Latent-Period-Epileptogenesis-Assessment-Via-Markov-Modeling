@@ -168,6 +168,47 @@ D/H: 300g  Sham  100g  200g  300g  Sham  100g  200g  300g  Sham  100g  200g
 
 Randomize larvae into assigned wells.
 
+### Reduced-camera pilot layout (proposed)
+
+When the camera cannot resolve all 96 wells at 160 fps, use a **prespecified
+central 4 × 4 block** rather than selecting fish after observing their
+behavior. The monitored block contains 16 fish—four per condition—while
+preserving one fish per well and the published 150 µL volume.
+
+```text
+              Column
+           5      6      7      8
+Row C    Sham   100g   200g   300g
+Row D    200g   300g   Sham   100g
+Row E    100g   Sham   300g   200g
+Row F    300g   200g   100g   Sham
+```
+
+This is a camera-efficiency design, not a new experimental group structure.
+Apply these safeguards:
+
+1. Randomize larvae to the 16 monitored wells before imaging and before any
+   behavioral outcome is known.
+2. Rotate the treatment labels through the 16 positions between independent
+   plates/clutches using a prespecified balanced schedule; never reuse one
+   fixed location for one treatment on every plate.
+3. Retain the same `fish_id` and `well_id` from 3 through 6 dpf.
+4. Fill surrounding unused wells with 150 µL E3 to reduce optical, evaporative,
+   and temperature differences. Record whether unmonitored wells contain fish
+   or medium only.
+5. Define the monitored wells in the acquisition metadata before recording.
+   Fish outside the recorded ROI are **not behavioral negatives**: their
+   video-derived endpoint is `NA` unless complete qualifying video exists from
+   another prespecified acquisition.
+6. Treat plate and clutch as design variables. Four fish per condition on one
+   plate are subsamples, not four independent biological replicates.
+
+With six independent clutches, this layout yields 24 monitored fish per
+condition before attrition. That count is suitable for a pilot but must be
+confirmed with an endpoint-specific power calculation before a definitive
+study. A central 4 × 6 block can increase throughput to 24 fish (six per
+condition) if the camera, storage, and illumination remain validated.
+
 ---
 
 ## 4. High-speed imaging
@@ -196,16 +237,70 @@ Published parameters from
 Image a calibration target at the well plane at the start of every plate
 session and store the pixels/mm value with the video metadata.
 
+### Single-camera region-of-interest alternative (proposed)
+
+The reduced 4 × 4 layout can be captured with one top-down, global-shutter
+monochrome camera instead of the 24-camera MCAM array. This is an adaptation of
+the published acquisition and must be validated before study use.
+
+| Component | Reduced-camera specification |
+|---|---|
+| Camera | Top-down global-shutter monochrome camera capable of 160 fps at the selected hardware ROI |
+| Active wells | Central C5:F8 block; 16 fish, four per condition |
+| Sensor ROI | Approximately 1024 × 1024 px when allocating 256 × 256 px per well; set from the measured plate geometry, not this nominal value |
+| Lens | Low-distortion macro lens; a telecentric lens is preferred when budget permits |
+| Mounting | Optical axis perpendicular to the well plane; rigid mount with locked focus |
+| Exposure and gain | Begin with the published 2 ms exposure and fixed gain; validate blur and saturation on the actual camera rather than using auto exposure |
+| Illumination | Uniform, diffused 850 nm transmitted infrared beneath the plate |
+| Calibration | Image a scale target at the well plane and store pixels/mm plus the fixed crop coordinates |
+| Output | One lossless or minimally compressed master recording plus one identified crop per monitored well |
+
+Conceptual arrangement:
+
+```text
+global-shutter camera
+          |
+          v
+  fixed 4 × 4 hardware ROI
+  clear low-condensation lid
+  C5:F8 wells, one fish/well
+  optically flat plate bottom
+          ^
+          |
+diffused 850 nm IR backlight
+```
+
+Create the 16 well crops from a calibration image, freeze their coordinates for
+the session, and name each crop with `plate_id`, `well_id`, `fish_id`, `dpf`,
+and `video_id`. Run single-animal DeepLabCut inference independently on each
+crop; the physical well boundary prevents identity swaps between fish.
+
+A camera's **hardware ROI** reduces captured pixels, storage, and required data
+bandwidth. Cropping selected wells only after recording the full plate reduces
+DeepLabCut inference time but does not reduce acquisition bandwidth. Most
+cameras expose one rectangular hardware ROI, which is why the monitored wells
+are clustered rather than scattered across the plate.
+
+At 8-bit monochrome, an uncompressed 1024 × 1024 stream at 160 fps is about
+168 MB/s, or roughly 50 GB for five minutes, before container overhead. Confirm
+sustained camera-interface and storage throughput, dropped-frame rate, focus,
+illumination uniformity, per-well pixels/mm, and pose error during the pilot.
+Compression used for analysis must not erase rapid tail motion.
+
 ### The first-seizure timing problem
 
 **Five-minute epochs cannot establish the first seizure between 24 and 72 h.**
 They establish only the first seizure *observed during a sampled epoch*.
 
-For a defensible `first_seizure_hours`, use two recording layers:
+For a defensible `first_seizure_hours`, use two recording layers across every
+fish for which that endpoint will be reported:
 
-1. **Continuous surveillance** of the whole plate at ≈ 25–30 fps under 850 nm.
-2. **Scheduled or triggered 160 fps MCAM** recordings for pose and seizure
-   classification.
+1. **Continuous surveillance** at ≈ 25–30 fps under 850 nm. Cover the whole
+   plate when all fish enter the behavioral endpoint, or at minimum the
+   prespecified C5:F8 block when only the reduced-camera cohort enters it.
+2. **Scheduled or triggered 160 fps recordings** using either the published
+   MCAM configuration or the validated single-camera hardware ROI for pose and
+   seizure classification.
 
 Without continuous surveillance, report **`first_observed_seizure_hours`** and
 preserve the previous and next observation times as **interval-censoring
@@ -362,8 +457,18 @@ drop_mass_g             drop_height_cm          syringe_volume_ml
 holder_type             drop_count              peak_pressure_kpa
 primary_wave_mean_kpa   pressure_wave_count     video_id
 lfp_recording_id        camera_fps              pixels_per_mm
-pose_model_version
+camera_mode             camera_exposure_ms      camera_bit_depth
+roi_x_px                roi_y_px                 roi_width_px
+roi_height_px           monitored_for_behavior  dropped_frame_count
+pose_model_version      behavior_coverage_complete
 ```
+
+For full-plate MCAM recordings, the ROI fields may describe the whole plate or
+the exported well crop. For reduced-camera recordings, store both the master
+hardware ROI and the 16 fixed per-well crop rectangles in the video manifest.
+`monitored_for_behavior` is assigned before recording;
+`behavior_coverage_complete` is assigned after acquisition QC and controls
+whether a video-derived endpoint may be resolved.
 
 Compute `hours_post_insult` from timestamps; never type it manually. Use one
 synchronized computer clock for pressure, camera, and LFP acquisition.
@@ -391,6 +496,7 @@ measured peak pressures of 115 / 210 / 319 kPa — inside and at the top of the
 | **`insult_batch_id`** | **Absent** — drop batch cannot be modeled as the experimental unit |
 | **`first_seizure_hours`** | **Empty (240/240)**; reconstructed from sampled sessions, so interval-censored |
 | **Continuous surveillance layer** | **Absent** — see §4 |
+| Reduced-camera ROI and monitoring flags | Absent — required for future use of the proposed single-camera method |
 
 ### Three gaps that bound the current claims
 
