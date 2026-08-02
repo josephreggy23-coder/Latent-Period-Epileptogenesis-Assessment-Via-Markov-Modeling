@@ -14,7 +14,6 @@ from tbi_markov.common import (
 )
 from tbi_markov.modeling import (
     fish_level_split,
-    macrostate_mapping,
     propagate_ordered_probabilities,
     run_analysis,
 )
@@ -85,13 +84,6 @@ def test_markov_forecast_propagates_to_target_day():
     expected = probability @ transition @ transition
     actual = propagate_ordered_probabilities(probability, transition, steps=2)
     np.testing.assert_allclose(actual, expected)
-
-
-def test_macrostate_collapse_uses_ordered_score_gaps():
-    severity_to_raw = np.array([0, 3, 2, 1])
-    score_by_raw = np.array([-0.60, 2.90, 1.05, -0.48])
-    mapping = macrostate_mapping(score_by_raw, severity_to_raw)
-    np.testing.assert_array_equal(mapping, [0, 0, 1, 2])
 
 
 def test_end_to_end_smoke(tmp_path):

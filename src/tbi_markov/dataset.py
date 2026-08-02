@@ -445,7 +445,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=RESULTS_DIR)
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--test-fraction", type=float, default=0.30)
-    parser.add_argument("--states", type=int, nargs="+", default=[2, 3, 4])
+    parser.add_argument("--states", type=int, nargs="+", default=[2, 3])
     parser.add_argument("--restarts", type=int, default=3)
     parser.add_argument("--cv-folds", type=int, default=3)
     parser.add_argument("--bootstrap-iterations", type=int, default=1_000)

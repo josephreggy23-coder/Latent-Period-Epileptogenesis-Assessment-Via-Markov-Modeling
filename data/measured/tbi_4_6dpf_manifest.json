@@ -34,12 +34,9 @@
     }
   },
   "features": [
-    "lfp_mean_uv",
     "lfp_variance_uv2",
-    "lfp_skewness",
     "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
     "lfp_seizure_event_rate_per_h",
-    "lfp_ica_complexity"
+    "lfp_fourth_power_mean_uv4"
   ]
 }

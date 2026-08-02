@@ -6,7 +6,7 @@ The committed analysis uses:
 
 - seed: `42`;
 - 70%/30% fish-level split;
-- HMM candidates: 2, 3, and 4 states;
+- HMM candidates: 2 and 3 states (see `docs/PREREGISTRATION.md`);
 - three train-only cross-validation folds;
 - 1,000 bootstrap iterations for forecast intervals.
 

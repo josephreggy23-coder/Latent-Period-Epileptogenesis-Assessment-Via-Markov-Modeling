@@ -20,74 +20,51 @@
       "tbi_moderate": 0.9
     }
   },
-  "selected_states": 4,
+  "selected_states": 3,
   "model_selection": {
     "2": {
-      "bic": 2924.44243173491,
-      "train_log_likelihood": -1366.1133236697933,
-      "cv_log_likelihood_per_session": -2.937805323091908,
-      "cv_standard_deviation": 0.5147881898436469,
-      "cv_standard_error": 0.29721309998186973,
+      "bic": 826.1378645348863,
+      "train_log_likelihood": -354.1640951140376,
+      "cv_log_likelihood_per_session": -0.784245613883863,
+      "cv_standard_deviation": 0.3603047356352209,
+      "cv_standard_error": 0.20802203610929176,
       "fold_log_likelihoods": [
-        -3.4916226661380168,
-        -2.8479037191051084,
-        -2.473889584032597
+        -1.1503860272687736,
+        -0.7722759647180024,
+        -0.430074849664813
       ],
-      "n_parameters": 31
+      "n_parameters": 19
     },
     "3": {
-      "bic": 2450.2012223462143,
-      "train_log_likelihood": -1070.08788182204,
-      "cv_log_likelihood_per_session": -2.261552663436477,
-      "cv_standard_deviation": 0.2320334090202563,
-      "cv_standard_error": 0.13396455115883152,
+      "bic": 338.4062434731551,
+      "train_log_likelihood": -69.99497495189449,
+      "cv_log_likelihood_per_session": -0.40291441185240134,
+      "cv_standard_deviation": 0.17972985204167716,
+      "cv_standard_error": 0.10376707845767393,
       "fold_log_likelihoods": [
-        -2.497304463018939,
-        -2.2539279298376464,
-        -2.0334255974528443
+        -0.5875805908210556,
+        -0.22856533932963913,
+        -0.39259730540650917
       ],
-      "n_parameters": 50
-    },
-    "4": {
-      "bic": 1802.623716554247,
-      "train_log_likelihood": -681.193782598608,
-      "cv_log_likelihood_per_session": -1.6957280944427942,
-      "cv_standard_deviation": 0.36605133825346575,
-      "cv_standard_error": 0.2113398386778612,
-      "fold_log_likelihoods": [
-        -2.098026152778393,
-        -1.606876823185421,
-        -1.382281307364569
-      ],
-      "n_parameters": 71
+      "n_parameters": 32
     }
   },
   "severity_alignment": {
     "raw_to_severity": [
+      1,
       0,
-      2,
-      3,
-      1
+      2
     ],
     "severity_to_raw": [
-      0,
-      3,
       1,
+      0,
       2
     ],
     "prespecified_score_by_raw_state": [
-      -0.8603232728465888,
-      1.3994173379850636,
-      2.606135994543933,
-      0.3061260626577662
-    ],
-    "microstate_to_macrostate": [
-      0,
-      1,
-      1,
-      2
-    ],
-    "macrostate_collapse_rule": "Adjacent severity-ordered components are split at the two largest prespecified-score gaps; truth labels are not used."
+      0.22943411844153921,
+      -0.36144064352831257,
+      0.9647858709263226
+    ]
   },
   "early_prediction": {
     "prediction_cutoff_dpf": 5,
@@ -95,175 +72,153 @@
     "forecast_method": "Causal filtered probability at the last contiguous QC-passing 4-5 dpf observation, propagated to 6 dpf with the learned ordered microstate transition matrix.",
     "n_test_fish": 71,
     "n_positive": 19,
-    "roc_auc": 0.7489878542510122,
-    "average_precision": 0.4381941052814233,
-    "brier_score": 0.20586680471615934,
+    "roc_auc": 0.7408906882591093,
+    "average_precision": 0.4136005578397824,
+    "brier_score": 0.1695739290999479,
     "threshold": 0.5,
-    "sensitivity": 0.10526315789473684,
-    "specificity": 0.9615384615384616,
+    "sensitivity": 0.21052631578947367,
+    "specificity": 0.8653846153846154,
     "confusion": {
-      "true_positive": 2,
-      "true_negative": 50,
-      "false_positive": 2,
-      "false_negative": 17
+      "true_positive": 4,
+      "true_negative": 45,
+      "false_positive": 7,
+      "false_negative": 15
     },
     "roc_auc_95ci": [
-      0.6421406770255271,
-      0.8529684095860567
+      0.6328208020050126,
+      0.8465909090909091
     ],
     "average_precision_95ci": [
-      0.2936103544880523,
-      0.6794691033424225
+      0.2728649237232239,
+      0.6319641571652955
     ],
     "calibration": {
       "observed_positive_rate": 0.2676056338028169,
-      "mean_forecast_risk": 0.11565271864009852,
-      "median_forecast_risk": 0.03694049547476092,
-      "max_forecast_risk": 0.6247894094395938,
-      "n_above_threshold": 4
+      "mean_forecast_risk": 0.2894003753043822,
+      "median_forecast_risk": 0.364133331637306,
+      "max_forecast_risk": 0.6001442142757116,
+      "n_above_threshold": 11
     }
   },
   "dynamics": {
-    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.6233834779412721,
-    "dose_index_vs_dpf6_forecast_risk_p": 6.383945875523997e-09,
+    "dose_index_vs_dpf6_forecast_risk_spearman_rho": 0.5994115056407271,
+    "dose_index_vs_dpf6_forecast_risk_p": 3.3314222451269867e-08,
     "group_transition_summary": [
       {
         "group": "sham",
         "n_transitions": 36,
-        "worsening_fraction": 0.08333333333333333,
-        "recovery_fraction": 0.0,
-        "stable_fraction": 0.9166666666666666
+        "worsening_fraction": 0.1388888888888889,
+        "recovery_fraction": 0.1388888888888889,
+        "stable_fraction": 0.7222222222222222
       },
       {
         "group": "tbi_low",
         "n_transitions": 35,
-        "worsening_fraction": 0.11428571428571428,
-        "recovery_fraction": 0.0,
-        "stable_fraction": 0.8857142857142857
+        "worsening_fraction": 0.2857142857142857,
+        "recovery_fraction": 0.14285714285714285,
+        "stable_fraction": 0.5714285714285714
       },
       {
         "group": "tbi_moderate",
         "n_transitions": 34,
-        "worsening_fraction": 0.14705882352941177,
-        "recovery_fraction": 0.0,
-        "stable_fraction": 0.8529411764705882
+        "worsening_fraction": 0.29411764705882354,
+        "recovery_fraction": 0.029411764705882353,
+        "stable_fraction": 0.6764705882352942
       },
       {
         "group": "tbi_high",
         "n_transitions": 36,
-        "worsening_fraction": 0.25,
-        "recovery_fraction": 0.05555555555555555,
-        "stable_fraction": 0.6944444444444444
+        "worsening_fraction": 0.3333333333333333,
+        "recovery_fraction": 0.19444444444444445,
+        "stable_fraction": 0.4722222222222222
       }
     ]
   },
   "behavior_validation": {
     "n_fish": 66,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.3203183996145447,
-    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 0.008740592925007565,
-    "dose_batch_adjusted_partial_spearman_rho": 0.032884595325025606,
-    "dose_batch_adjusted_partial_spearman_p": 0.7932272742630725,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho": 0.31541440601113424,
+    "dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p": 0.0098888034962143,
+    "dose_batch_adjusted_partial_spearman_rho": 0.04572639499196699,
+    "dose_batch_adjusted_partial_spearman_p": 0.7154279363996864,
     "note": "Behavioral values are blinded manual Baraban scores and pose-derived kinematics aggregated per session. Locomotor speed is not monotone in dose: pressures above roughly 300 kPa can suppress movement, so low speed is ambiguous between no seizure and severe injury."
   },
+  "baseline": {
+    "model": "elastic-net landmark logistic regression",
+    "features": "identical causal <=5 dpf landmark vector, same reduced feature allowlist",
+    "n_train_fish": 162,
+    "n_test_fish": 71,
+    "n_positive": 19,
+    "chosen_C": 3.727593720314938,
+    "chosen_l1_ratio": 0.9,
+    "roc_auc": 0.7904858299595141,
+    "average_precision": 0.5187044298028303,
+    "brier_score": 0.16243906278279358,
+    "threshold": 0.5,
+    "sensitivity": 0.15789473684210525,
+    "specificity": 0.9423076923076923
+  },
   "ordered_start_probabilities": [
-    0.5038776162199168,
-    0.29868150901137763,
-    0.1480421847165493,
-    0.04939869005215627
+    0.5689961329410174,
+    0.27586759763815194,
+    0.15513626942083078
   ],
   "ordered_transition_matrix": [
     [
-      0.8072323352558453,
-      0.17476669387402474,
-      0.01600611993035203,
-      0.0019948509397779224
+      0.8019603581701944,
+      0.1569955887741893,
+      0.0410440530556164
     ],
     [
-      0.005752563587615019,
-      0.5203041666970525,
-      0.4370024118629759,
-      0.03694085785235674
+      0.045715995106076865,
+      0.5253258717950542,
+      0.428958133098869
     ],
     [
-      0.004910519685950796,
-      0.1659187929326446,
-      0.5368389380750379,
-      0.29233174930636663
-    ],
-    [
-      0.010143147224767219,
-      0.0786610852238122,
-      0.2864063559261786,
-      0.624789411625242
+      0.014076224335979215,
+      0.38577956138830916,
+      0.6001442142757116
     ]
   ],
   "ordered_emission_means_robust_scaled": [
     [
-      -0.4977580188681443,
-      -0.5306552818293241,
-      -0.49002475255370537,
-      -0.5037235128997634,
-      -0.521587196571677,
-      8.324095395540685e-249,
-      0.43636514572615326
+      -0.5115768671303409,
+      -0.4431736057444415,
+      3.519585847253918e-257,
+      -0.4910121012384679
     ],
     [
-      0.10246965569454543,
-      0.02226336132805144,
-      0.12972086950059022,
-      0.16768442474288553,
-      0.07794169715551022,
-      1.4265172265196664e-252,
-      -0.22277939458750237
+      0.26203977183814253,
+      0.3472376676152044,
+      2.0710121029863914e-259,
+      0.30845903431281
     ],
     [
-      0.5941488627618801,
-      0.602600667745828,
-      0.57223333297995,
-      0.6802010715559723,
-      0.6543680607361315,
-      0.7502424081371319,
-      -0.7571182706655811
-    ],
-    [
-      1.2270302322085629,
-      1.1913750214559644,
-      1.1657437222863092,
-      1.1619193630534967,
-      1.2464415531524133,
-      1.4644465609474915,
-      -1.36330991902656
+      0.8268831837961294,
+      0.8604947376001829,
+      1.293292110909764,
+      0.8784734513992147
     ]
   ],
   "features": [
-    "lfp_mean_uv",
     "lfp_variance_uv2",
-    "lfp_skewness",
     "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
     "lfp_seizure_event_rate_per_h",
-    "lfp_ica_complexity"
+    "lfp_fourth_power_mean_uv4"
   ],
   "preprocessing": {
     "fit_partition": "training fish only",
     "transform": "log1p variance, kurtosis, fourth-power mean, and event rate; then median/IQR scaling",
     "center": [
-      4.7032,
       6.667419026549474,
-      0.5005,
       1.782718724575906,
-      14.770528168806448,
       0.0,
-      0.7245
+      14.770528168806448
     ],
     "scale_iqr": [
-      5.1203,
       0.9209560122369043,
-      0.6507,
       0.44031843480904187,
-      2.301071559780592,
       1.0,
-      0.2892
+      2.301071559780592
     ]
   },
   "critical_caveat": "Repeated same-fish 4-6 dpf LFP after 3 dpf TBI is a new integrated protocol requiring a pilot; the penetrating forebrain preparation was not validated as recoverable across days. See docs/EXPERIMENTAL_PROTOCOL.md."

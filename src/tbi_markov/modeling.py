@@ -42,6 +42,7 @@ from .common import (
     fit_robust_scaler,
     qc_sessions,
 )
+from .baseline import fit_elastic_net_baseline
 from .hmm import DiagonalGaussianHMM
 
 # All four reduced features (see common.FEATURES) are prespecified to rise
@@ -129,39 +130,6 @@ def severity_mapping(means: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndar
     raw_to_severity = np.empty_like(severity_to_raw)
     raw_to_severity[severity_to_raw] = np.arange(len(severity_to_raw))
     return raw_to_severity, severity_to_raw, score
-
-
-def macrostate_mapping(
-    severity_score: np.ndarray,
-    severity_to_raw: np.ndarray,
-    n_macrostates: int = 3,
-) -> np.ndarray:
-    """Collapse adjacent statistical components into interpretable severity states.
-
-    Model-order selection is free to choose more Gaussian components than the
-    three severity categories used for interpretation. The collapse is based
-    only on the largest gaps in the prespecified LFP severity score; the outcome
-    is never consulted.
-    """
-    ordered_score = np.asarray(severity_score)[severity_to_raw]
-    n_microstates = len(ordered_score)
-    if n_microstates == n_macrostates:
-        return np.arange(n_macrostates, dtype=int)
-    if n_microstates < n_macrostates:
-        return np.rint(
-            np.linspace(0, n_macrostates - 1, n_microstates)
-        ).astype(int)
-    gaps = np.diff(ordered_score)
-    cut_after = set(
-        np.argsort(gaps)[-(n_macrostates - 1) :].astype(int).tolist()
-    )
-    mapping = np.zeros(n_microstates, dtype=int)
-    macrostate = 0
-    for microstate in range(n_microstates):
-        mapping[microstate] = macrostate
-        if microstate in cut_after:
-            macrostate += 1
-    return mapping
 
 
 def _make_hmm(
@@ -274,21 +242,20 @@ def score_test_sessions(
     scale: np.ndarray,
     raw_to_severity: np.ndarray,
     severity_to_raw: np.ndarray,
-    micro_to_macro: np.ndarray,
 ) -> pd.DataFrame:
+    """Score held-out sessions on the severity-ordered microstates directly.
+
+    With K capped at 2-3 (docs/PREREGISTRATION.md), the fitted states already
+    are the interpretable severity categories, so there is no separate
+    macrostate collapse: ``predicted_state`` is the severity-ordered state.
+    """
     sequences, order, frames = build_sequences(lfp, test_ids, center, scale)
+    n_states = len(severity_to_raw)
     rows: list[dict] = []
     for sequence, fish_id in zip(sequences, order):
         frame = frames[fish_id]
-        microstates = raw_to_severity[model.predict(sequence)]
-        micro_probabilities = _ordered_filter(model, sequence, severity_to_raw)
-        macro_probabilities = np.column_stack(
-            [
-                micro_probabilities[:, micro_to_macro == macrostate].sum(axis=1)
-                for macrostate in range(3)
-            ]
-        )
-        states = micro_to_macro[microstates]
+        states = raw_to_severity[model.predict(sequence)]
+        probabilities = _ordered_filter(model, sequence, severity_to_raw)
         for row_index, (_, source) in enumerate(frame.iterrows()):
             record = {
                 "fish_id": fish_id,
@@ -298,19 +265,14 @@ def score_test_sessions(
                     source["measured_peak_pressure_kpa"]
                 ),
                 DOSE_INDEX: float(source[DOSE_INDEX]),
-                "predicted_microstate": int(microstates[row_index]),
                 "predicted_state": int(states[row_index]),
                 "expected_state": float(
-                    macro_probabilities[row_index] @ np.arange(3)
+                    probabilities[row_index] @ np.arange(n_states)
                 ),
             }
-            for state in range(model.n_components):
-                record[f"p_microstate_{state}"] = float(
-                    micro_probabilities[row_index, state]
-                )
-            for state in range(3):
+            for state in range(n_states):
                 record[f"p_state_{state}"] = float(
-                    macro_probabilities[row_index, state]
+                    probabilities[row_index, state]
                 )
             rows.append(record)
     return pd.DataFrame(rows).sort_values(["fish_id", "dpf"]).reset_index(drop=True)
@@ -337,7 +299,6 @@ def early_prediction(
     center: np.ndarray,
     scale: np.ndarray,
     severity_to_raw: np.ndarray,
-    micro_to_macro: np.ndarray,
     seed: int,
     bootstrap_iterations: int,
 ) -> tuple[dict, pd.DataFrame]:
@@ -367,12 +328,10 @@ def early_prediction(
             ordered_transition,
             forecast_steps,
         )
-        current_high_probability = float(
-            probabilities[-1, micro_to_macro == 2].sum()
-        )
-        forecast_high_probability = float(
-            forecast_probability[micro_to_macro == 2].sum()
-        )
+        # Columns are already severity-ordered by _ordered_filter, so the last
+        # column is the single highest-severity state.
+        current_high_probability = float(probabilities[-1, -1])
+        forecast_high_probability = float(forecast_probability[-1])
         rows.append(
             {
                 "fish_id": fish_id,
@@ -746,8 +705,7 @@ def write_report(
 - selected **K={selected}** by lowest train-only BIC ({selection['bic']:.1f});
   train-only CV log likelihood/session
   {selection['cv_log_likelihood_per_session']:.3f}
-- preprocessing, severity ordering, and macrostate collapse never consult the
-  endpoint
+- preprocessing and severity ordering never consult the endpoint
 
 ## Endpoint
 
@@ -791,8 +749,8 @@ sensitivity above should not be read as a ranking failure:
 - held-out fish above 0.5: **{early['calibration']['n_above_threshold']}** of
   {early['n_test_fish']}
 
-The propagated quantity is the probability of occupying the **top LFP
-macrostate**, whereas the endpoint is a **behavioural** event. The two are on
+The propagated quantity is the probability of occupying the **highest-severity
+LFP state**, whereas the endpoint is a **behavioural** event. The two are on
 different scales, and the LFP state is rarer than the behavioural outcome, so
 the risk sits well below 0.5 for most animals. Any deployment would need a
 threshold fitted on training fish; none is tuned on the held-out set here.
@@ -853,7 +811,7 @@ def run_analysis(
     output_dir: Path | str = RESULTS_DIR,
     seed: int = SEED,
     test_fraction: float = 0.30,
-    candidates: Iterable[int] = (2, 3, 4),
+    candidates: Iterable[int] = (2, 3),
     restarts: int = 3,
     cv_folds: int = 3,
     bootstrap_iterations: int = 1_000,
@@ -891,7 +849,6 @@ def run_analysis(
         scale,
     )
     raw_to_severity, severity_to_raw, severity_score = severity_mapping(model.means_)
-    micro_to_macro = macrostate_mapping(severity_score, severity_to_raw)
     transition_matrix = model.transmat_[np.ix_(severity_to_raw, severity_to_raw)]
     scored_sessions = score_test_sessions(
         model,
@@ -901,7 +858,6 @@ def run_analysis(
         scale,
         raw_to_severity,
         severity_to_raw,
-        micro_to_macro,
     )
     early, early_predictions = early_prediction(
         model,
@@ -911,14 +867,16 @@ def run_analysis(
         center,
         scale,
         severity_to_raw,
-        micro_to_macro,
         seed + 10,
         bootstrap_iterations,
     )
     dynamics, occupancy, group_transitions = dynamics_metrics(
-        scored_sessions, early_predictions
+        scored_sessions, early_predictions, n_states=selected
     )
     behavior, behavior_frame = behavior_validation(early_predictions, dlc)
+    baseline_metrics, baseline_predictions = fit_elastic_net_baseline(
+        model_lfp, outcomes, train_ids, test_ids, center, scale, seed
+    )
 
     metrics = {
         "seed": seed,
@@ -950,15 +908,11 @@ def run_analysis(
             "raw_to_severity": raw_to_severity.tolist(),
             "severity_to_raw": severity_to_raw.tolist(),
             "prespecified_score_by_raw_state": severity_score.tolist(),
-            "microstate_to_macrostate": micro_to_macro.tolist(),
-            "macrostate_collapse_rule": (
-                "Adjacent severity-ordered components are split at the two "
-                "largest prespecified-score gaps; truth labels are not used."
-            ),
         },
         "early_prediction": early,
         "dynamics": dynamics,
         "behavior_validation": behavior,
+        "baseline": baseline_metrics,
         "ordered_start_probabilities": model.startprob_[severity_to_raw].tolist(),
         "ordered_transition_matrix": transition_matrix.tolist(),
         "ordered_emission_means_robust_scaled": model.means_[severity_to_raw].tolist(),
@@ -983,6 +937,9 @@ def run_analysis(
     assignments.to_csv(tables_dir / "tbi_split_assignments.csv", index=False)
     scored_sessions.to_csv(tables_dir / "tbi_scored_test_sessions.csv", index=False)
     early_predictions.to_csv(tables_dir / "tbi_early_predictions.csv", index=False)
+    baseline_predictions.to_csv(
+        tables_dir / "tbi_baseline_predictions.csv", index=False
+    )
     occupancy.to_csv(tables_dir / "tbi_state_occupancy.csv", index=False)
     group_transitions.to_csv(
         tables_dir / "tbi_group_transition_summary.csv",

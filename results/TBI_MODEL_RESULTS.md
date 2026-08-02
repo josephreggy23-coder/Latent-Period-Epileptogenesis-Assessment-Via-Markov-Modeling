@@ -10,11 +10,10 @@
   706 passing QC (100.0%)
 - 706 contiguous modelling sessions from
   240 fish with a usable 4 dpf baseline
-- selected **K=4** by lowest train-only BIC (1802.6);
+- selected **K=3** by lowest train-only BIC (338.4);
   train-only CV log likelihood/session
-  -1.696
-- preprocessing, severity ordering, and macrostate collapse never consult the
-  endpoint
+  -0.403
+- preprocessing and severity ordering never consult the endpoint
 
 ## Endpoint
 
@@ -39,12 +38,12 @@ filtered state distribution is propagated through the learned transition matrix
 to 6 dpf:
 
 - held-out fish: **71** (19 positive)
-- ROC-AUC: **0.749** (bootstrap 95% CI
-  0.642-0.853)
-- average precision: **0.438**
-- Brier score: **0.206**
+- ROC-AUC: **0.741** (bootstrap 95% CI
+  0.633-0.847)
+- average precision: **0.414**
+- Brier score: **0.170**
 - sensitivity/specificity at probability 0.5:
-  **0.105/0.962**
+  **0.211/0.865**
 
 ### Discrimination versus calibration
 
@@ -54,14 +53,14 @@ sensitivity above should not be read as a ranking failure:
 
 - observed positive rate: **0.268**
 - mean / median forecast risk:
-  **0.116 /
-  0.037**
-  (maximum 0.625)
-- held-out fish above 0.5: **4** of
+  **0.289 /
+  0.364**
+  (maximum 0.600)
+- held-out fish above 0.5: **11** of
   71
 
-The propagated quantity is the probability of occupying the **top LFP
-macrostate**, whereas the endpoint is a **behavioural** event. The two are on
+The propagated quantity is the probability of occupying the **highest-severity
+LFP state**, whereas the endpoint is a **behavioural** event. The two are on
 different scales, and the LFP state is rarer than the behavioural outcome, so
 the risk sits well below 0.5 for most animals. Any deployment would need a
 threshold fitted on training fish; none is tuned on the held-out set here.
@@ -76,14 +75,14 @@ the association with the independent behavioural channel.
 ## Dose and behaviour checks
 
 - injury dose index vs 6 dpf forecast risk: Spearman
-  rho=0.623
-  (p=6.38e-09)
+  rho=0.599
+  (p=3.33e-08)
 - 6 dpf forecast risk vs independent 6 dpf behavioural abnormality:
-  rho=0.320
-  (p=0.00874), n=66
+  rho=0.315
+  (p=0.00989), n=66
 - dose/batch-adjusted partial rho:
-  0.033
-  (p=0.793)
+  0.046
+  (p=0.715)
 
 ## Boundaries
 
