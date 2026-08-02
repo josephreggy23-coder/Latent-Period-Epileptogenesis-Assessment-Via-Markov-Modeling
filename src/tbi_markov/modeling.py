@@ -55,6 +55,10 @@ from .dose_ordering import (
     write_negative_controls_report,
 )
 from .hmm import DiagonalGaussianHMM
+from .interpretation import (
+    make_state_emission_profile_figure,
+    write_state_interpretation_report,
+)
 
 # RISING_FEATURES, FALLING_FEATURES, severity_mapping, and make_hmm are
 # re-exported from .common (imported above) so existing call sites and
@@ -979,6 +983,18 @@ def run_analysis(
         covariate_adjusted,
         negative_controls,
         output_dir / "NEGATIVE_CONTROLS.md",
+    )
+    ordered_means = model.means_[severity_to_raw]
+    make_state_emission_profile_figure(
+        figures_dir / "state_emission_profile.png", ordered_means, selected
+    )
+    write_state_interpretation_report(
+        output_dir / "STATE_INTERPRETATION.md",
+        selected,
+        ordered_means,
+        transition_matrix,
+        model.startprob_[severity_to_raw],
+        occupancy,
     )
     write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md", endpoint_summary)
     make_figures(
