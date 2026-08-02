@@ -29,6 +29,14 @@
 > behavioral event endpoint. A single event does not establish chronic epilepsy,
 > and this is not a minutes-before-onset seizure forecasting system.
 
+> [!IMPORTANT]
+> The feature allowlist, model order range, primary and secondary outcomes,
+> and split rule below were frozen in
+> [`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md) at commit
+> [`f684ee4`](../../commit/f684ee4edd82b86f68de4c4e8c3b44ce15d15224) **before**
+> any refitting on the reduced feature set. Any later deviation requires a
+> dated amendment in that document.
+
 ## Project at a glance
 
 | | |
