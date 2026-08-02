@@ -12,6 +12,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from .hmm import DiagonalGaussianHMM
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPOSITORY_ROOT / "data" / "measured"
 RESULTS_DIR = REPOSITORY_ROOT / "results"
@@ -70,6 +72,52 @@ LOG1P_FEATURES = FEATURES
 # without one, NA never observed. See tbi_markov.dataset.
 TARGET = "high_burden_state_dpf6"
 DOSE_INDEX = "cumulative_pressure_burden_kpa_hits"
+
+# All four reduced features (see FEATURES above) are prespecified to rise
+# with injury severity; none is expected to fall. Shared by tbi_markov.modeling
+# (primary model) and tbi_markov.dose_ordering (sham-only negative control),
+# so it lives here rather than in either caller to avoid a circular import.
+RISING_FEATURES = (
+    "lfp_variance_uv2",
+    "lfp_kurtosis",
+    "lfp_seizure_event_rate_per_h",
+    "lfp_fourth_power_mean_uv4",
+)
+FALLING_FEATURES: tuple[str, ...] = ()
+
+
+def severity_mapping(means: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Order arbitrary HMM labels with a prespecified LFP severity direction."""
+    rising = [FEATURES.index(feature) for feature in RISING_FEATURES]
+    falling = [FEATURES.index(feature) for feature in FALLING_FEATURES]
+    score = means[:, rising].mean(axis=1)
+    if falling:
+        score = score - means[:, falling].mean(axis=1)
+    severity_to_raw = np.argsort(score)
+    raw_to_severity = np.empty_like(severity_to_raw)
+    raw_to_severity[severity_to_raw] = np.arange(len(severity_to_raw))
+    return raw_to_severity, severity_to_raw, score
+
+
+def make_hmm(
+    n_states: int,
+    seed: int,
+    restarts: int,
+    n_iter: int = 160,
+) -> DiagonalGaussianHMM:
+    """Fixed hyperparameters shared by every HMM fit in this project,
+    including the Task 5 sham-only negative-control refit."""
+    return DiagonalGaussianHMM(
+        n_components=n_states,
+        random_state=seed,
+        n_restarts=restarts,
+        n_iter=n_iter,
+        tol=1e-5,
+        min_covar=1e-3,
+        variance_regularization=0.05,
+        start_pseudocount=0.10,
+        transition_pseudocount=0.25,
+    )
 
 
 def load_dataset(

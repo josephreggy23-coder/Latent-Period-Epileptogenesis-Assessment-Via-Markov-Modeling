@@ -105,6 +105,9 @@ def _normalize_lfp(raw: pd.DataFrame) -> pd.DataFrame:
         "channel", "electrode_target", "electrode_impedance_mohm",
         "rms_noise_mv", "electrode_shift_pct", "qc_pass",
         "sampling_rate_hz", "recording_duration_min", "artifact_fraction",
+        # Session-timing covariate proxy for Task 5's covariate-adjusted
+        # dose-ordering test (docs/PREREGISTRATION.md); excluded from FEATURES.
+        "recording_start_utc",
         *FEATURES,
     ]
     frame = frame[[column for column in keep if column in frame.columns]].copy()

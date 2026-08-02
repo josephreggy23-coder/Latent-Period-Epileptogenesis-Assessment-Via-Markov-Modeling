@@ -29,31 +29,38 @@ from sklearn.model_selection import StratifiedKFold
 
 from .common import (
     DOSE_INDEX,
+    FALLING_FEATURES,
     FEATURES,
     GROUP_ORDER,
     GROUPS,
     OBSERVATION_DPF,
     RESULTS_DIR,
     PREDICTION_CUTOFF_DPF,
+    RISING_FEATURES,
     SEED,
     TARGET,
     TARGET_DPF,
     build_sequences,
     fit_robust_scaler,
+    make_hmm,
     qc_sessions,
+    severity_mapping,
 )
 from .baseline import fit_elastic_net_baseline
+from .dose_ordering import (
+    covariate_adjusted_dose_ordering,
+    decode_state_index,
+    primary_dose_ordering_test,
+    run_negative_controls,
+    write_negative_controls_report,
+)
 from .hmm import DiagonalGaussianHMM
 
-# All four reduced features (see common.FEATURES) are prespecified to rise
-# with injury severity; none is expected to fall.
-RISING_FEATURES = (
-    "lfp_variance_uv2",
-    "lfp_kurtosis",
-    "lfp_seizure_event_rate_per_h",
-    "lfp_fourth_power_mean_uv4",
-)
-FALLING_FEATURES: tuple[str, ...] = ()
+# RISING_FEATURES, FALLING_FEATURES, severity_mapping, and make_hmm are
+# re-exported from .common (imported above) so existing call sites and
+# tests/test_features.py's `from tbi_markov.modeling import ...` keep working;
+# they live in common.py so tbi_markov.dose_ordering can reuse them for the
+# sham-only negative control without a circular import.
 
 
 def fish_level_split(
@@ -119,38 +126,6 @@ def fish_level_split(
     return train_ids, test_ids, assignments
 
 
-def severity_mapping(means: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Order arbitrary HMM labels with a prespecified LFP severity direction."""
-    rising = [FEATURES.index(feature) for feature in RISING_FEATURES]
-    falling = [FEATURES.index(feature) for feature in FALLING_FEATURES]
-    score = means[:, rising].mean(axis=1)
-    if falling:
-        score = score - means[:, falling].mean(axis=1)
-    severity_to_raw = np.argsort(score)
-    raw_to_severity = np.empty_like(severity_to_raw)
-    raw_to_severity[severity_to_raw] = np.arange(len(severity_to_raw))
-    return raw_to_severity, severity_to_raw, score
-
-
-def _make_hmm(
-    n_states: int,
-    seed: int,
-    restarts: int,
-    n_iter: int = 160,
-) -> DiagonalGaussianHMM:
-    return DiagonalGaussianHMM(
-        n_components=n_states,
-        random_state=seed,
-        n_restarts=restarts,
-        n_iter=n_iter,
-        tol=1e-5,
-        min_covar=1e-3,
-        variance_regularization=0.05,
-        start_pseudocount=0.10,
-        transition_pseudocount=0.25,
-    )
-
-
 def select_state_count(
     lfp: pd.DataFrame,
     outcomes: pd.DataFrame,
@@ -177,7 +152,7 @@ def select_state_count(
     full_models: dict[int, DiagonalGaussianHMM] = {}
 
     for n_states in candidates:
-        full_model = _make_hmm(n_states, seed + n_states * 101, restarts).fit(
+        full_model = make_hmm(n_states, seed + n_states * 101, restarts).fit(
             full_sequences
         )
         full_models[n_states] = full_model
@@ -202,7 +177,7 @@ def select_state_count(
             validation_sequences, _, _ = build_sequences(
                 lfp, validation_ids, fold_center, fold_scale
             )
-            model = _make_hmm(
+            model = make_hmm(
                 n_states,
                 seed + n_states * 1_000 + fold,
                 max(1, restarts - 1),
@@ -878,6 +853,39 @@ def run_analysis(
         model_lfp, outcomes, train_ids, test_ids, center, scale, seed
     )
 
+    # Task 5 primary result: dose ordering of recovered latent states. Dose is
+    # used here only at evaluation time; fitting above never saw it.
+    full_cohort_state_index = decode_state_index(
+        model,
+        model_lfp,
+        set(outcomes["fish_id"].astype(str)),
+        center,
+        scale,
+        raw_to_severity,
+    )
+    primary_dose_ordering = primary_dose_ordering_test(
+        outcomes, full_cohort_state_index, seed
+    )
+    held_out_dose_ordering = primary_dose_ordering_test(
+        outcomes,
+        full_cohort_state_index.loc[
+            full_cohort_state_index["fish_id"].isin(test_ids)
+        ],
+        seed + 500,
+    )
+    covariate_adjusted = covariate_adjusted_dose_ordering(
+        outcomes, model_lfp, full_cohort_state_index
+    )
+    negative_controls = run_negative_controls(
+        model_lfp,
+        outcomes,
+        full_cohort_state_index,
+        primary_dose_ordering,
+        selected,
+        seed,
+        restarts,
+    )
+
     metrics = {
         "seed": seed,
         "split": {
@@ -913,6 +921,11 @@ def run_analysis(
         "dynamics": dynamics,
         "behavior_validation": behavior,
         "baseline": baseline_metrics,
+        "dose_ordering": {
+            "primary_full_cohort": primary_dose_ordering,
+            "held_out_test_fish_only": held_out_dose_ordering,
+            "covariate_adjusted": covariate_adjusted,
+        },
         "ordered_start_probabilities": model.startprob_[severity_to_raw].tolist(),
         "ordered_transition_matrix": transition_matrix.tolist(),
         "ordered_emission_means_robust_scaled": model.means_[severity_to_raw].tolist(),
@@ -940,6 +953,13 @@ def run_analysis(
     baseline_predictions.to_csv(
         tables_dir / "tbi_baseline_predictions.csv", index=False
     )
+    full_cohort_state_index.merge(
+        outcomes[["fish_id", "group"]].assign(
+            fish_id=lambda frame: frame["fish_id"].astype(str)
+        ),
+        on="fish_id",
+        how="left",
+    ).to_csv(tables_dir / "tbi_dose_ordering_state_index.csv", index=False)
     occupancy.to_csv(tables_dir / "tbi_state_occupancy.csv", index=False)
     group_transitions.to_csv(
         tables_dir / "tbi_group_transition_summary.csv",
@@ -953,6 +973,12 @@ def run_analysis(
     (output_dir / "tbi_model_metrics.json").write_text(
         json.dumps(_json_ready(metrics), indent=2) + "\n",
         encoding="utf-8",
+    )
+    write_negative_controls_report(
+        primary_dose_ordering,
+        covariate_adjusted,
+        negative_controls,
+        output_dir / "NEGATIVE_CONTROLS.md",
     )
     write_report(metrics, output_dir / "TBI_MODEL_RESULTS.md", endpoint_summary)
     make_figures(

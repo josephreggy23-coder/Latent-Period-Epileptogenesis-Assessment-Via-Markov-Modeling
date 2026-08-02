@@ -41,6 +41,9 @@ def make_lfp(
                     "qc_pass": True,
                     "measured_peak_pressure_kpa": 100.0 * arm_index,
                     "cumulative_pressure_burden_kpa_hits": 100.0 * arm_index,
+                    "clutch_id": f"CL{1 + (member % 3):02d}",
+                    "recording_start_utc": pd.Timestamp("2026-07-14 14:00:00")
+                    + pd.Timedelta(minutes=15 * (member % 8)),
                 }
                 level = arm_index + 0.5 * (dpf - 4)
                 for index, feature in enumerate(FEATURES):

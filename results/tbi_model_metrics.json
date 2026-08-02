@@ -157,6 +157,44 @@
     "sensitivity": 0.15789473684210525,
     "specificity": 0.9423076923076923
   },
+  "dose_ordering": {
+    "primary_full_cohort": {
+      "n_fish": 240,
+      "spearman_rho": 0.6965079160400379,
+      "bootstrap_95ci": [
+        0.616792499628731,
+        0.7613435925324208
+      ],
+      "permutation_iterations": 5000,
+      "permutation_null_mean": -0.0004963287209205803,
+      "permutation_null_sd": 0.06533491021177538,
+      "one_sided_permutation_p": 0.0001999600079984003
+    },
+    "held_out_test_fish_only": {
+      "n_fish": 72,
+      "spearman_rho": 0.641090083703391,
+      "bootstrap_95ci": [
+        0.470259283470005,
+        0.7801552533075928
+      ],
+      "permutation_iterations": 5000,
+      "permutation_null_mean": -0.0038556335457683518,
+      "permutation_null_sd": 0.11993392755931516,
+      "one_sided_permutation_p": 0.0001999600079984003
+    },
+    "covariate_adjusted": {
+      "n_fish": 240,
+      "covariates": [
+        "recording_batch (proxy for absent insult_batch_id)",
+        "clutch_id (proxy for absent insult_batch_id)",
+        "mean_session_hour_of_day (protocol target +/-30min; observed spread ~2h)",
+        "mean_electrode_shift_pct",
+        "mean_rms_noise_mv"
+      ],
+      "partial_spearman_rho": 0.6926109828295629,
+      "partial_spearman_p": 1.270514066252967e-35
+    }
+  },
   "ordered_start_probabilities": [
     0.5689961329410174,
     0.27586759763815194,
