@@ -10,7 +10,7 @@ authoritative inputs; everything here is derived and rebuilt on each run.
 
 | File | Rows | Purpose |
 |---|---:|---|
-| `tbi_4_6dpf_lfp_timeseries.csv` | 706 | Session protocol, QC, and the seven HMM features |
+| `tbi_4_6dpf_lfp_timeseries.csv` | 706 | Session protocol, QC, and the four HMM feature columns |
 | `tbi_4_6dpf_fish_outcomes.csv` | 240 | Arm, dose, survival, and the 6 dpf endpoint |
 | `tbi_4_6dpf_behavior.csv` | 706 | Per-session aggregate of the blinded Event Log |
 | `tbi_4_6dpf_manifest.json` | — | Cohort scope, arm counts, and endpoint definition |
@@ -28,18 +28,21 @@ form the session-table keys.
 
 ## Feature isolation
 
-Only these LFP columns enter the HMM:
+Only these LFP columns enter the HMM — three prespecified concepts, four
+columns, locked in [`../docs/PREREGISTRATION.md`](../docs/PREREGISTRATION.md):
 
-- `lfp_mean_uv`
-- `lfp_variance_uv2`
-- `lfp_skewness`
-- `lfp_kurtosis`
-- `lfp_fourth_power_mean_uv4`
-- `lfp_seizure_event_rate_per_h`
-- `lfp_ica_complexity`
+- `lfp_variance_uv2` and `lfp_kurtosis` together (excitation-inhibition
+  proxy — fallback for an unavailable 1/f spectral exponent)
+- `lfp_seizure_event_rate_per_h` (epileptiform discharge rate)
+- `lfp_fourth_power_mean_uv4` (waveform-shape measure — fallback for
+  unavailable line length)
 
-Injury metadata, dose, group, batch, QC results, behavior, and the endpoint are
-excluded from model inputs.
+`lfp_mean_uv`, `lfp_skewness`, and `lfp_ica_complexity` are deleted from the
+normalized table entirely (not merely excluded from the model), per
+`docs/PREREGISTRATION.md`. Injury metadata, dose, group, batch, QC results,
+behavior, `recording_start_utc`, and the endpoint are excluded from model
+inputs; `recording_start_utc` and the QC fields are retained only as
+covariates in the dose-ordering partial correlation, never as HMM features.
 
 ## The endpoint
 

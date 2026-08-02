@@ -13,6 +13,13 @@ in [EXPERIMENTAL_PROTOCOL.md](EXPERIMENTAL_PROTOCOL.md). The source papers do
 not report repeated same-fish LFP at 4–6 dpf after a 3 dpf TBI; that
 combination is a new integration requiring a pilot.
 
+The feature allowlist, model-order range, primary outcome (dose ordering of
+latent states), secondary outcome (6 dpf behavioral forecast), and split rule
+below were frozen in [PREREGISTRATION.md](PREREGISTRATION.md) before any
+refitting. This document describes how each of those pieces is computed;
+PREREGISTRATION.md is the authoritative record of what was committed to in
+advance.
+
 ## Cohort
 
 240 larvae, 60 per arm: sham, 100 g, 200 g, and 300 g single weight drops from
@@ -65,9 +72,16 @@ manufacture signal.
 
 ## Preprocessing
 
-The HMM uses seven LFP features. Variance, kurtosis, fourth-power mean, and event
-rate receive `log1p` transforms. Median and interquartile-range scaling
-parameters are estimated from training fish only.
+The HMM uses three prespecified feature concepts, four columns:
+`lfp_variance_uv2` and `lfp_kurtosis` together (excitation-inhibition proxy —
+the intended proxy, the aperiodic 1/f spectral exponent, is not computable
+from this dataset, which contains only pre-summarized session statistics and
+no raw or windowed trace); `lfp_seizure_event_rate_per_h` (epileptiform
+discharge rate); and `lfp_fourth_power_mean_uv4` (waveform-shape measure —
+the intended measure, line length, is unavailable for the same reason). All
+four columns receive `log1p`, then median/interquartile-range scaling
+estimated from training fish only. See
+[PREREGISTRATION.md](PREREGISTRATION.md) for the full substitution rationale.
 
 After QC, each fish contributes the uninterrupted daily prefix beginning at
 4 dpf. A missing 4 dpf session excludes that fish from sequence modeling; a
@@ -85,12 +99,43 @@ expectation maximization with:
 - variable-length sequences;
 - Viterbi decoding and causal forward filtering.
 
-Two-, three-, and four-state candidates are compared on training-only BIC and
-three-fold fish-level cross-validated log likelihood. Gaussian components are
-ordered by a prespecified electrophysiological severity direction, without
-consulting the endpoint. When four microstates are selected, adjacent ordered
-components are collapsed into three interpretable macrostates at the two largest
-severity-score gaps.
+Two- and three-state candidates are compared on training-only BIC and
+three-fold fish-level cross-validated log likelihood (K = 4 was dropped from
+the candidate grid when the feature set was reduced to four columns, to keep
+the parameter count defensible against a dataset with at most two observed
+transitions per fish). Gaussian components are ordered by a prespecified
+electrophysiological severity direction, without consulting the endpoint or
+dose. With K capped at three, the fitted severity-ordered microstates are
+themselves the interpretable states — there is no separate macrostate
+collapse step. See [STATE_INTERPRETATION.md](../results/STATE_INTERPRETATION.md)
+for what each state means in plain neurophysiology.
+
+## Primary result: dose ordering of recovered states
+
+Injury dose and every other protocol field are excluded from the feature
+matrix, so it never influences model fitting. Dose is used at evaluation time
+only, to test whether the fitted structure lines up with a label the model
+never saw. For every fish, the mean severity-ordered Viterbi state across its
+own sessions is correlated (Spearman) against its injury arm, with:
+
+- a subject-level (fish-level) bootstrap 95% confidence interval;
+- a one-sided permutation null built from shuffled arm labels, matching the
+  prespecified directional prediction (higher dose → higher state index);
+- a partial correlation adjusting for every covariate actually available:
+  recording batch, clutch, mean session time-of-day, and mean QC
+  continuities — proxies for the protocol's true experimental unit
+  (`insult_batch_id`, absent from this dataset) and for the ~2-hour
+  session-timing spread against the protocol's ±30-minute target.
+
+Three negative controls accompany the primary result:
+**label-shuffled** (the permutation null applied as a robustness check on the
+whole distribution), **sham-only refit** (the HMM refit using only
+uninjured fish, then every fish decoded through it, to check the ordering
+is not an artifact of injured-fish data pulling the fitted state means
+during training), and **leave-one-arm-out** (the primary correlation
+recomputed with each arm excluded in turn, to check no single arm carries
+the result). All three are reported in
+[NEGATIVE_CONTROLS.md](../results/NEGATIVE_CONTROLS.md).
 
 ## Endpoint
 
@@ -116,18 +161,22 @@ LFP feature matrix, so the forecast target is independent of the model's inputs.
 
 The fish-level split assigns 70% to training and 30% to testing, stratified by
 injury arm and endpoint. The endpoint is used for split balance and held-out
-scoring only.
+scoring only. This same split underlies both the primary dose-ordering result
+above and the secondary forecast below.
 
-Held-out evaluation includes:
+Held-out evaluation of the **secondary** 6 dpf forecast includes:
 
 - arm/dpf occupancy and worsening/recovery fractions;
 - causal 6 dpf forecast ROC-AUC, average precision, Brier score, sensitivity,
   specificity, and bootstrap confidence intervals;
 - calibration: observed positive rate against the mean, median, and maximum
   forecast risk, and the count above threshold;
-- association between the injury dose index and forecast risk;
 - association between forecast risk and 6 dpf behavioral abnormality, including
-  a dose/batch-adjusted partial Spearman correlation.
+  a dose/batch-adjusted partial Spearman correlation, and a plain statement of
+  whether the unadjusted association survives that adjustment;
+- a head-to-head comparison against an elastic-net landmark logistic
+  regression fit on the identical causal ≤5 dpf feature vector and the
+  identical split, reported honestly regardless of which model wins.
 
 For the forecast, the final filtered distribution from the available 4–5 dpf
 prefix is propagated one or two steps through the learned ordered microstate

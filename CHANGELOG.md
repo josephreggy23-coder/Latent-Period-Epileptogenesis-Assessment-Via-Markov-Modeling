@@ -2,6 +2,79 @@
 
 All notable project changes are documented here.
 
+## 3.0.0 — 2026-08-02
+
+**Breaking. Reframed around a preregistered primary claim.** Every change
+below serves one claim: graded injury dose produces dose-ordered latent LFP
+states, recovered by a model that never sees dose. The 6 dpf behavioral
+forecast is now explicitly secondary.
+
+### Added
+
+- `docs/PREREGISTRATION.md`, committed at `f684ee4` before any refitting on
+  the reduced feature set. Cited by hash in the README; later deviation
+  requires a dated amendment there.
+- `tbi_markov.dose_ordering`: the primary result. Full-cohort Spearman rho of
+  injury arm vs. mean severity-ordered state index (0.697, 95% CI
+  0.617–0.761), subject-level bootstrap CI, one-sided permutation null
+  (p=0.0002), and a covariate-adjusted partial correlation (batch, clutch,
+  session time-of-day, QC continuities — proxies for the absent
+  `insult_batch_id`). Three negative controls in
+  `results/NEGATIVE_CONTROLS.md`: label-shuffled, sham-only refit, and
+  leave-one-arm-out.
+- `tbi_markov.interpretation`: names each severity-ordered state
+  (Baseline/low-amplitude, Transitional/latent-like, Hyperexcitable/ictal-like
+  at the selected K=3), a standardized-emission-mean heatmap
+  (`results/figures/state_emission_profile.png`), and
+  `results/STATE_INTERPRETATION.md` comparing the recovered structure against
+  the canonical acute-depression/latent/hyperexcitable progression — including
+  where it does not fit (state 0 is shared by sham and injured fish, so it is
+  not read as evidence of acute depression).
+- `tbi_markov.baseline`: the elastic-net landmark logistic regression the
+  README listed as "planned" since the project began, now implemented and
+  compared honestly against the HMM forecast on every run.
+
+### Changed
+
+- **Feature allowlist reduced from seven columns to three prespecified
+  concepts, four columns:** `lfp_variance_uv2` + `lfp_kurtosis`
+  (excitation-inhibition proxy — fallback for an unavailable 1/f spectral
+  exponent), `lfp_seizure_event_rate_per_h` (discharge rate), and
+  `lfp_fourth_power_mean_uv4` (waveform shape — fallback for unavailable line
+  length). `lfp_mean_uv`, `lfp_skewness`, and `lfp_ica_complexity` are deleted,
+  not commented out.
+- **Model-order candidates reduced from K ∈ {2,3,4} to K ∈ {2,3}.** K=3 is
+  selected by train-only BIC on the reduced feature set.
+- **Macrostate collapse removed.** With K capped at three, the fitted
+  severity-ordered microstates already are the interpretable states; the old
+  micro-to-macrostate mapping was unneeded complexity once K=4 was dropped.
+- `results/TBI_MODEL_RESULTS.md` now leads with the primary dose-ordering
+  result and reports the secondary 6 dpf forecast as one consolidated,
+  explicitly-labeled subsection, including the honest HMM-vs-baseline
+  comparison (baseline AUC 0.790 beats HMM AUC 0.741 on this refit) and the
+  explanation for why the unadjusted forecast-vs-behavior correlation does
+  not survive dose/batch adjustment.
+- README rewritten and pruned to claim / background / methods / primary
+  result / state interpretation / secondary analysis / limitations /
+  reproduction, under 250 lines. The five-model landscape table, the human
+  PTE comparison and epileptogenesis-staging tables, the evaluation-standard
+  table, and every "planned"/"conditional" badge are removed; replaced with a
+  short Background paragraph on why zebrafish uniquely permit graded,
+  measured-pressure dosing at a scale the human PTE literature cannot reach.
+- `docs/METHODS.md` updated to match: three-feature preprocessing, K=2/3
+  model order, the primary dose-ordering methodology, and the secondary
+  forecast's baseline comparison.
+- Normalized LFP table now retains `recording_start_utc` (excluded from
+  `FEATURES`) as the session-timing covariate for the dose-ordering partial
+  correlation.
+
+### Results unchanged in kind, changed in number
+
+Results are from the same measured cohort; only the model changed. The
+7-feature/K=4 forecast AUC was 0.749; the reduced 4-feature/K=3 forecast AUC
+is 0.741, still beaten by the newly implemented elastic-net baseline (0.790)
+— reported plainly rather than the comparison being left unrun.
+
 ## 2.0.0 — 2026-07-25
 
 **Breaking.** The synthetic simulator and every artifact derived from it are
