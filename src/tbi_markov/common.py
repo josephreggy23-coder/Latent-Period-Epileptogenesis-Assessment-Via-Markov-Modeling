@@ -29,32 +29,42 @@ PREDICTION_CUTOFF_DPF = 5
 GROUPS = ("sham", "tbi_low", "tbi_moderate", "tbi_high")
 GROUP_ORDER = {group: index for index, group in enumerate(GROUPS)}
 
-# Eimon-inspired session summaries. No protocol, dose, group, behavior, or
-# outcome field is allowed into the HMM feature matrix.
+# Three prespecified feature concepts, four columns. Locked in
+# docs/PREREGISTRATION.md before refitting; do not add columns back without a
+# dated amendment there. No protocol, dose, group, behavior, or outcome field
+# is allowed into the HMM feature matrix.
+#
+# 1. Excitation-inhibition proxy: lfp_variance_uv2 + lfp_kurtosis together.
+#    The intended proxy was the aperiodic 1/f spectral exponent
+#    (specparam/FOOOF), which rising net excitation is expected to flatten.
+#    No PSD or raw trace exists anywhere in this repository or its source
+#    workbooks (Task 1 audit), so the exponent is not computable. Variance and
+#    kurtosis of the amplitude distribution are the documented fallback: both
+#    are expected to rise with the loss of the smooth, low-amplitude baseline
+#    rhythm that dominates an inhibition-intact forebrain recording. This is a
+#    real substitution, not a validated E/I marker — stated as a limitation
+#    everywhere the proxy is used.
+# 2. Epileptiform discharge rate: lfp_seizure_event_rate_per_h. The most
+#    direct available correlate of epileptogenesis — a higher rate of scored
+#    seizure-like LFP events is the closest thing to a face-valid electrographic
+#    marker in this feature set.
+# 3. Waveform-shape measure: lfp_fourth_power_mean_uv4. The intended measure
+#    was line length (a raw-trace complexity measure), unavailable for the
+#    same reason as the 1/f exponent — no raw or windowed trace exists. The
+#    fourth-power mean is the documented fallback: it is dominated by rare,
+#    high-amplitude excursions the way line length is dominated by rapid
+#    trace excursions, so it captures a related aspect of waveform shape.
 FEATURES = (
-    "lfp_mean_uv",
     "lfp_variance_uv2",
-    "lfp_skewness",
     "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
     "lfp_seizure_event_rate_per_h",
-    "lfp_ica_complexity",
+    "lfp_fourth_power_mean_uv4",
 )
 
-NONNEGATIVE_LFP_FEATURES = (
-    "lfp_variance_uv2",
-    "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
-    "lfp_seizure_event_rate_per_h",
-    "lfp_ica_complexity",
-)
-
-LOG1P_FEATURES = (
-    "lfp_variance_uv2",
-    "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
-    "lfp_seizure_event_rate_per_h",
-)
+# All four reduced features are non-negative and heavy-tailed; every one gets
+# log1p before robust scaling.
+NONNEGATIVE_LFP_FEATURES = FEATURES
+LOG1P_FEATURES = FEATURES
 
 # Behavioral 6 dpf endpoint. Three-valued: 1 qualifying event, 0 observed
 # without one, NA never observed. See tbi_markov.dataset.

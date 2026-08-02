@@ -44,15 +44,15 @@ from .common import (
 )
 from .hmm import DiagonalGaussianHMM
 
+# All four reduced features (see common.FEATURES) are prespecified to rise
+# with injury severity; none is expected to fall.
 RISING_FEATURES = (
-    "lfp_mean_uv",
     "lfp_variance_uv2",
-    "lfp_skewness",
     "lfp_kurtosis",
-    "lfp_fourth_power_mean_uv4",
     "lfp_seizure_event_rate_per_h",
+    "lfp_fourth_power_mean_uv4",
 )
-FALLING_FEATURES = ("lfp_ica_complexity",)
+FALLING_FEATURES: tuple[str, ...] = ()
 
 
 def fish_level_split(
