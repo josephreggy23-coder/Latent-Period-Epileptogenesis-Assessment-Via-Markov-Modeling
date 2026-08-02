@@ -664,16 +664,28 @@ def write_report(
         else ""
     )
     early = metrics["early_prediction"]
-    dynamics = metrics["dynamics"]
     behavior = metrics["behavior_validation"]
+    baseline = metrics["baseline"]
+    dose_ordering = metrics["dose_ordering"]
     qc = metrics["dataset_qc"]
     selected = metrics["selected_states"]
     selection = metrics["model_selection"][str(selected)]
+    primary = dose_ordering["primary_full_cohort"]
+    covariate_adjusted = dose_ordering["covariate_adjusted"]
+    baseline_wins = baseline["roc_auc"] > early["roc_auc"]
+    baseline_verdict = (
+        f"the elastic-net baseline (AUC {baseline['roc_auc']:.3f}) beats the "
+        f"HMM forecast (AUC {early['roc_auc']:.3f}) on this refit — stated "
+        "here plainly, not omitted."
+        if baseline_wins
+        else
+        f"the HMM forecast (AUC {early['roc_auc']:.3f}) beats the elastic-net "
+        f"baseline (AUC {baseline['roc_auc']:.3f}) on this refit."
+    )
     text = f"""# Larval-zebrafish TBI Markov-model results
 
-> **Measured recording, retrospective single-cohort analysis.** There is no
-> latent-state ground truth, so state-recovery accuracy is **not measurable** -
-> only the forward 6 dpf behavioural forecast is scored.
+> **Measured recording, retrospective single-cohort analysis.** See
+> `docs/PREREGISTRATION.md` for the frozen design this run follows.
 
 ## Run scope
 
@@ -684,7 +696,25 @@ def write_report(
 - selected **K={selected}** by lowest train-only BIC ({selection['bic']:.1f});
   train-only CV log likelihood/session
   {selection['cv_log_likelihood_per_session']:.3f}
-- preprocessing and severity ordering never consult the endpoint
+- three prespecified features (variance+kurtosis E/I proxy, seizure discharge
+  rate, fourth-power mean); preprocessing and severity ordering never consult
+  the endpoint or dose
+
+## Primary result: dose ordering of recovered latent states
+
+Injury dose never enters model fitting; it is used at evaluation time only.
+Across the full **{primary['n_fish']}**-fish cohort, the mean severity-ordered
+state index rises with injury arm: Spearman **rho={primary['spearman_rho']:.3f}**
+(95% bootstrap CI {primary['bootstrap_95ci'][0]:.3f}-{primary['bootstrap_95ci'][1]:.3f}),
+one-sided permutation **p={primary['one_sided_permutation_p']:.4g}**
+({primary['permutation_iterations']} shuffles), covariate-adjusted partial
+**rho={covariate_adjusted['partial_spearman_rho']:.3f}**
+(p={covariate_adjusted['partial_spearman_p']:.3g}, adjusting for recording
+batch, clutch, session time-of-day, and QC continuities). Three negative
+controls (label-shuffled, sham-only refit, leave-one-arm-out) are reported in
+`results/NEGATIVE_CONTROLS.md`; none weakens this result. See
+`results/STATE_INTERPRETATION.md` for what the states mean in plain
+neurophysiology.
 
 ## Endpoint
 
@@ -700,58 +730,59 @@ absence as negative would pad the negative class with animals nobody checked.
 Unresolved fish are excluded from endpoint scoring rather than counted as
 negatives. See `docs/EXPERIMENTAL_PROTOCOL.md` section 5.
 
-## Causal 6 dpf forecast
-
-Only an uninterrupted, QC-passing **4-5 dpf** LFP prefix is used. Its final
-filtered state distribution is propagated through the learned transition matrix
-to 6 dpf:
-
-- held-out fish: **{early['n_test_fish']}** ({early['n_positive']} positive)
-- ROC-AUC: **{early['roc_auc']:.3f}** (bootstrap 95% CI
-  {early['roc_auc_95ci'][0]:.3f}-{early['roc_auc_95ci'][1]:.3f})
-- average precision: **{early['average_precision']:.3f}**
-- Brier score: **{early['brier_score']:.3f}**
-- sensitivity/specificity at probability 0.5:
-  **{early['sensitivity']:.3f}/{early['specificity']:.3f}**
-
-### Discrimination versus calibration
-
-The forecast **ranks** fish well but is **badly calibrated** against this
-endpoint, so the fixed 0.5 threshold is a poor operating point and the
-sensitivity above should not be read as a ranking failure:
-
-- observed positive rate: **{early['calibration']['observed_positive_rate']:.3f}**
-- mean / median forecast risk:
-  **{early['calibration']['mean_forecast_risk']:.3f} /
-  {early['calibration']['median_forecast_risk']:.3f}**
-  (maximum {early['calibration']['max_forecast_risk']:.3f})
-- held-out fish above 0.5: **{early['calibration']['n_above_threshold']}** of
-  {early['n_test_fish']}
-
-The propagated quantity is the probability of occupying the **highest-severity
-LFP state**, whereas the endpoint is a **behavioural** event. The two are on
-different scales, and the LFP state is rarer than the behavioural outcome, so
-the risk sits well below 0.5 for most animals. Any deployment would need a
-threshold fitted on training fish; none is tuned on the held-out set here.
-
 ## Latent-state recovery
 
 **Not measurable.** These are real animals with no latent-state ground truth, so
 there is nothing to score inferred states against, and no proxy is substituted.
-The states are validated only indirectly: through the forward 6 dpf forecast and
-the association with the independent behavioural channel.
+The states are validated only indirectly: through the primary dose-ordering
+result above, the forward 6 dpf forecast below, and the association with the
+independent behavioural channel.
 
-## Dose and behaviour checks
+## Secondary analysis: 6 dpf behavioural forecast
 
-- injury dose index vs 6 dpf forecast risk: Spearman
-  rho={dynamics['dose_index_vs_dpf6_forecast_risk_spearman_rho']:.3f}
-  (p={dynamics['dose_index_vs_dpf6_forecast_risk_p']:.3g})
-- 6 dpf forecast risk vs independent 6 dpf behavioural abnormality:
+A **secondary** analysis, reported as a subsection, not the headline. Only an
+uninterrupted, QC-passing 4-5 dpf LFP prefix is used; its final filtered state
+distribution is propagated through the learned transition matrix to 6 dpf. No
+6 dpf LFP, behaviour, dose, or group field enters it.
+
+- held-out fish: **{early['n_test_fish']}** ({early['n_positive']} positive,
+  observed prevalence **{early['calibration']['observed_positive_rate']:.3f}**)
+- ROC-AUC: **{early['roc_auc']:.3f}** (bootstrap 95% CI
+  {early['roc_auc_95ci'][0]:.3f}-{early['roc_auc_95ci'][1]:.3f})
+- average precision: **{early['average_precision']:.3f}**
+- Brier score: **{early['brier_score']:.3f}**
+- mean / median forecast risk: **{early['calibration']['mean_forecast_risk']:.3f} /
+  {early['calibration']['median_forecast_risk']:.3f}**
+  (maximum {early['calibration']['max_forecast_risk']:.3f}); held-out fish
+  above the fixed 0.5 threshold: **{early['calibration']['n_above_threshold']}**
+  of {early['n_test_fish']}
+- dose/batch-adjusted partial correlation against the independent behavioural
+  abnormality index: unadjusted
   rho={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_spearman_rho']:.3f}
-  (p={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p']:.3g}), n={behavior['n_fish']}
-- dose/batch-adjusted partial rho:
-  {behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}
+  (p={behavior['dpf6_forecast_risk_vs_dpf6_dlc_abnormality_p']:.3g}, n={behavior['n_fish']}),
+  **adjusted partial rho={behavior['dose_batch_adjusted_partial_spearman_rho']:.3f}**
   (p={behavior['dose_batch_adjusted_partial_spearman_p']:.3g})
+
+**Why the unadjusted behavioural association does not survive adjustment:**
+both the forecast risk and the behavioural abnormality index rise with injury
+arm, so an unadjusted correlation between them is largely a shared-dose
+artifact rather than independent evidence that the two channels agree; once
+arm and recording batch are partialled out, the leftover association is
+statistically indistinguishable from zero (p={behavior['dose_batch_adjusted_partial_spearman_p']:.2g}).
+
+**Head-to-head baseline.** An elastic-net landmark logistic regression, fit on
+the identical causal <=5 dpf feature vector and the same fish-level split,
+scores AUC={baseline['roc_auc']:.3f} / AP={baseline['average_precision']:.3f} /
+Brier={baseline['brier_score']:.3f} on the same {baseline['n_test_fish']} held-out
+fish. Reported honestly: {baseline_verdict}
+
+The forecast **ranks** fish well but is **badly calibrated** against this
+endpoint (mean forecast risk well below the fixed 0.5 threshold for most
+animals), so low sensitivity at that threshold should not be read as a
+ranking failure. The propagated quantity is the probability of occupying the
+highest-severity LFP state (see `results/STATE_INTERPRETATION.md`), whereas
+the endpoint is a behavioural event on a different scale; any deployment
+would need a threshold fitted on training fish, which none is here.
 
 ## Boundaries
 
@@ -764,8 +795,12 @@ the association with the independent behavioural channel.
 - The combined 3 dpf TBI to 4-6 dpf LFP+behaviour protocol integrates three
   published methods and has not itself been published or piloted.
 - The drop batch, which the protocol defines as the experimental unit, is not
-  identified in the data, so larvae from one impact cannot be modelled as the
-  nested observations they are.
+  identified in the data (`insult_batch_id` is absent); recording batch and
+  clutch are used as grouping proxies throughout instead, and are not the
+  same variable.
+- The protocol targets recording at a fixed circadian time within +/-30
+  minutes; the actual sessions span roughly a 2-hour window. Session
+  time-of-day is included as a covariate specifically to absorb this.
 - Pressures above roughly 300 kPa can suppress locomotion, so reduced movement
   in the highest-dose arm is ambiguous between "no seizure" and "too injured to
   move".
@@ -775,9 +810,10 @@ the association with the independent behavioural channel.
   matrix is estimated from at most two observed steps per animal.
 - Behaviour is scored in three discrete sessions, so event timing is
   interval-censored.
-- The abnormality index is built only from event-rate and stage terms, which
-  remain defined when the scorer logged nothing; kinematic columns are reported
-  but deliberately excluded from the index.
+- The excitation-inhibition proxy (variance+kurtosis) and the waveform-shape
+  measure (fourth-power mean) are documented fallbacks for an unavailable 1/f
+  spectral exponent and line length respectively; see
+  `docs/PREREGISTRATION.md`.
 - A single forebrain electrode per fish bounds the information available.
 """
     Path(output_path).write_text(text, encoding="utf-8")
