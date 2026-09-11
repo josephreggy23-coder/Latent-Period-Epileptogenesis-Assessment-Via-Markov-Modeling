@@ -15,6 +15,8 @@ from tbi_markov.transition_analysis import (
     TransitionSummary,
     _validate_stochastic,
     check_detailed_balance,
+    expected_hitting_time,
+    hitting_probabilities,
     mean_first_passage_times,
     mixing_time,
     spectral_gap,
@@ -257,3 +259,111 @@ def test_summarize_two_state():
     result = summarize_transitions(P)
     assert result.latent_period_steps > 0
     assert result.detailed_balance.is_reversible is True
+
+
+# ---- Hitting probabilities -----------------------------------------------
+
+def test_hitting_prob_irreducible_all_one():
+    """In an irreducible chain, every state reaches every other with probability 1."""
+    P = _three_state_directed()
+    for target in range(3):
+        h = hitting_probabilities(P, target)
+        np.testing.assert_allclose(h, 1.0, atol=1e-8)
+
+
+def test_hitting_prob_target_is_one():
+    """h[target] = 1 by definition."""
+    P = _two_state_symmetric(0.8)
+    h = hitting_probabilities(P, target=0)
+    assert h[0] == pytest.approx(1.0)
+
+
+def test_hitting_prob_absorbing_state():
+    """If the target is absorbing (P[t,t]=1) and reachable, h = 1 for
+    states that can reach it and < 1 for states that cannot."""
+    # State 2 is absorbing; state 0 can reach it, state 1 only reaches 0.
+    P = np.array([
+        [0.3, 0.0, 0.7],  # 0 -> 2 with prob 0.7
+        [1.0, 0.0, 0.0],  # 1 -> 0 only
+        [0.0, 0.0, 1.0],  # 2 absorbing
+    ])
+    h = hitting_probabilities(P, target=2)
+    assert h[2] == pytest.approx(1.0)
+    assert h[0] == pytest.approx(1.0)  # reaches 2 directly
+    assert h[1] == pytest.approx(1.0)  # 1 -> 0 -> 2
+
+
+def test_hitting_prob_unreachable_state():
+    """If the target is unreachable from some state, h < 1."""
+    # State 2 is absorbing; states 0 and 1 form a closed communicating class.
+    P = np.array([
+        [0.6, 0.4, 0.0],
+        [0.3, 0.7, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
+    h = hitting_probabilities(P, target=2)
+    assert h[2] == pytest.approx(1.0)
+    assert h[0] == pytest.approx(0.0, abs=1e-10)
+    assert h[1] == pytest.approx(0.0, abs=1e-10)
+
+
+def test_hitting_prob_invalid_target_raises():
+    P = _two_state_symmetric(0.5)
+    with pytest.raises(ValueError, match="target"):
+        hitting_probabilities(P, target=5)
+
+
+def test_hitting_prob_single_state():
+    h = hitting_probabilities(np.array([[1.0]]), target=0)
+    assert h[0] == pytest.approx(1.0)
+
+
+# ---- Expected hitting time ------------------------------------------------
+
+def test_expected_hitting_time_target_is_zero():
+    """k[target] = 0."""
+    P = _three_state_directed()
+    k = expected_hitting_time(P, target=1)
+    assert k[1] == pytest.approx(0.0)
+
+
+def test_expected_hitting_time_symmetric_two_state():
+    """For a symmetric 2-state chain, E[hit] = 1/(1-p)."""
+    p = 0.9
+    P = _two_state_symmetric(p)
+    k = expected_hitting_time(P, target=1)
+    assert k[0] == pytest.approx(1.0 / (1 - p), rel=1e-8)
+
+
+def test_expected_hitting_time_agrees_with_mfpt():
+    """For an irreducible chain, expected_hitting_time should match
+    the corresponding column of the MFPT matrix."""
+    P = _three_state_directed()
+    M = mean_first_passage_times(P)
+    for target in range(3):
+        k = expected_hitting_time(P, target)
+        for i in range(3):
+            assert k[i] == pytest.approx(M[i, target], rel=1e-6)
+
+
+def test_expected_hitting_time_unreachable_is_inf():
+    """If the target cannot be reached, the expected time should be inf."""
+    P = np.array([
+        [0.6, 0.4, 0.0],
+        [0.3, 0.7, 0.0],
+        [0.0, 0.0, 1.0],
+    ])
+    k = expected_hitting_time(P, target=2)
+    assert k[2] == 0.0
+    assert np.isinf(k[0])
+    assert np.isinf(k[1])
+
+
+def test_expected_hitting_time_all_positive_ergodic():
+    """For an ergodic chain, all off-diagonal hitting times are positive."""
+    P = _three_state_directed()
+    for target in range(3):
+        k = expected_hitting_time(P, target)
+        for i in range(3):
+            if i != target:
+                assert k[i] > 0

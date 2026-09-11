@@ -301,6 +301,133 @@ def summarize_transitions(
 
 
 # ------------------------------------------------------------------
+# Hitting probabilities
+# ------------------------------------------------------------------
+def hitting_probabilities(P: np.ndarray, target: int) -> np.ndarray:
+    """Probability of eventually reaching a target state from each state.
+
+    For an irreducible chain every state is reached with probability 1.
+    For a reducible chain (or one made absorbing by removing transitions
+    out of the target), the hitting probability can be strictly less
+    than 1 from some states.
+
+    This solves the system h[i] = P[i, target] + sum_{j != target} P[i,j] h[j]
+    for all i != target, with h[target] = 1.
+
+    In the epileptogenesis context, setting the target to the
+    highest-severity state answers: "starting from each baseline or
+    intermediate state, what fraction of animals eventually reach the
+    seizure state under this transition model?"
+
+    Parameters
+    ----------
+    P : ndarray, shape (K, K)
+        Row-stochastic transition matrix.
+    target : int
+        Index of the target state.
+
+    Returns
+    -------
+    h : ndarray, shape (K,)
+        h[i] = probability of eventually reaching ``target`` from state i.
+        h[target] = 1 by definition.
+
+    Raises
+    ------
+    ValueError
+        If P is not square/stochastic or target is out of range.
+    """
+    _validate_stochastic(P)
+    K = P.shape[0]
+    if not 0 <= target < K:
+        raise ValueError(f"target must be in [0, {K - 1}], got {target}")
+
+    if K == 1:
+        return np.array([1.0])
+
+    # Indices of non-target states.
+    others = [i for i in range(K) if i != target]
+    n = len(others)
+
+    # Build the system (I - Q) h_others = P_others[:,target]
+    # where Q = P[others][:,others] is the sub-matrix of transitions
+    # among non-target states.
+    Q = P[np.ix_(others, others)]
+    b = P[others, target]
+
+    A_sys = np.eye(n) - Q
+
+    # The system is singular when some non-target states form a closed
+    # communicating class that cannot reach the target.  In that case
+    # use least-squares, which yields h = 0 for the unreachable states
+    # (the minimum-norm solution of a consistent under-determined
+    # sub-system) and the correct probabilities for reachable states.
+    try:
+        h_others = np.linalg.solve(A_sys, b)
+    except np.linalg.LinAlgError:
+        h_others, _, _, _ = np.linalg.lstsq(A_sys, b, rcond=None)
+
+    h = np.empty(K)
+    h[target] = 1.0
+    for idx, state in enumerate(others):
+        h[state] = float(np.clip(h_others[idx], 0.0, 1.0))
+
+    return h
+
+
+def expected_hitting_time(P: np.ndarray, target: int) -> np.ndarray:
+    """Expected number of steps to reach a target state from each state.
+
+    Solves k[i] = 1 + sum_{j != target} P[i,j] k[j] for i != target,
+    with k[target] = 0.
+
+    This is related to but distinct from the mean first passage time
+    matrix: it gives the column for a single target state without
+    computing the full matrix, and handles reducible chains by returning
+    inf when the target is not reachable.
+
+    Parameters
+    ----------
+    P : ndarray, shape (K, K)
+        Row-stochastic transition matrix.
+    target : int
+        Index of the target state.
+
+    Returns
+    -------
+    k : ndarray, shape (K,)
+        k[i] = expected steps to reach ``target`` from state i.
+        k[target] = 0.  Returns inf for states that cannot reach target.
+    """
+    _validate_stochastic(P)
+    K = P.shape[0]
+    if not 0 <= target < K:
+        raise ValueError(f"target must be in [0, {K - 1}], got {target}")
+
+    if K == 1:
+        return np.array([0.0])
+
+    others = [i for i in range(K) if i != target]
+    n = len(others)
+    Q = P[np.ix_(others, others)]
+    A_sys = np.eye(n) - Q
+
+    # Check whether the system is solvable (target is reachable).
+    try:
+        k_others = np.linalg.solve(A_sys, np.ones(n))
+    except np.linalg.LinAlgError:
+        k_others = np.full(n, np.inf)
+
+    k = np.empty(K)
+    k[target] = 0.0
+    for idx, state in enumerate(others):
+        val = k_others[idx]
+        k[state] = float(val) if np.isfinite(val) and val >= 0 else np.inf
+
+    return k
+
+
+# ------------------------------------------------------------------
 # Validation helper
 # ------------------------------------------------------------------
 def _validate_stochastic(P: np.ndarray) -> None:
