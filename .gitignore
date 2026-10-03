@@ -21,3 +21,4 @@ Thumbs.db
 *.inspect.ndjson
 .idea/
 .vscode/
+.mypy_cache/
