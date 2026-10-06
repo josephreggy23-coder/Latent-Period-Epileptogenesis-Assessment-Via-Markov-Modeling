@@ -1,5 +1,7 @@
 * text=auto eol=lf
 
+*.csv text
+*.json text
 *.png binary
 *.xlsx binary
 *.npz binary
