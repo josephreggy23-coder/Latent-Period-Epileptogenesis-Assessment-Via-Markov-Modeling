@@ -178,7 +178,7 @@ agreement. Full numbers: [`results/TBI_MODEL_RESULTS.md`](results/TBI_MODEL_RESU
 git clone https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling.git
 cd Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scriptsctivate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
 python -m tbi_markov          # rebuilds data/measured/ and results/ from the source workbooks
 python -m pytest               # verify
