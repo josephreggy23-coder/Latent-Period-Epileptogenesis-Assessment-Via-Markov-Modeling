@@ -8,6 +8,7 @@ stated more strongly than that.
 
 ```bash
 python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scriptsctivate
 python -m pip install -e ".[dev]"
 python -m pytest
 ```
