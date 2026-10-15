@@ -77,4 +77,3 @@ with at most two transitions observed per fish, is not positioned to
 separate "acutely suppressed" from "never excited" without an
 uninjured-versus-injured amplitude contrast the current feature set does not
 carry.
-
