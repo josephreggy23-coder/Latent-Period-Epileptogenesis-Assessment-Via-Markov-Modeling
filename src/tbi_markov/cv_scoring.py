@@ -53,7 +53,6 @@ from sklearn.metrics import (
     brier_score_loss,
     roc_auc_score,
 )
-from sklearn.model_selection import StratifiedKFold
 
 
 @dataclass(frozen=True)
