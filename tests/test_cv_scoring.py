@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from tbi_markov.cv_scoring import (
-    CVResult,
     FoldScore,
     aggregate_folds,
     calibration_error,
