@@ -26,3 +26,4 @@ Thumbs.db
 venv/
 coverage.xml
 .tox/
+.env
