@@ -57,7 +57,7 @@ here at all.
 
 ## Methods
 
-| | |
+| Item | Details |
 |---|---|
 | **Cohort** | 240 wild-type AB larval zebrafish; 60 per injury arm (sham, 100/200/300 g drop) |
 | **Injury design** | 3 dpf single weight drop from 108 cm; measured peak pressure 0/115/210/319 kPa |
@@ -194,7 +194,7 @@ replacement data.
 
 ## Documentation and data
 
-| | |
+| Document | Contents |
 |---|---|
 | [`docs/EXPERIMENTAL_PROTOCOL.md`](docs/EXPERIMENTAL_PROTOCOL.md) | Apparatus, pressure calibration, recording design, wet-lab limitations |
 | [`docs/METHODS.md`](docs/METHODS.md) | Endpoint construction, preprocessing, HMM fitting, statistics |
