@@ -6,7 +6,6 @@ injury dose, group, or outcome field enters that early-risk calculation.
 """
 from __future__ import annotations
 
-import argparse
 import json
 import math
 from pathlib import Path
