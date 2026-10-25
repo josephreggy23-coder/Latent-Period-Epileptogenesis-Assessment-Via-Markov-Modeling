@@ -17,7 +17,6 @@ from tbi_markov.dose_ordering import (
 
 
 def _make_outcomes(n_per_arm: int = 15, seed: int = 0) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
     rows = []
     for arm_index, group in enumerate(GROUPS):
         for member in range(n_per_arm):
