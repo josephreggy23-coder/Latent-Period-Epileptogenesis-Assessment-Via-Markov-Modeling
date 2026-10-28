@@ -93,7 +93,7 @@ def fish_level_split(
         test_ids.update(ids[:n_test])
 
     # Keep the arm sizes close even when a rare "missing" stratum has one fish.
-    for group, group_frame in frame.groupby("group", sort=True):
+    for _group, group_frame in frame.groupby("group", sort=True):
         desired = int(round(test_fraction * len(group_frame)))
         current = sum(fish_id in test_ids for fish_id in group_frame["fish_id"])
         if current < desired:
