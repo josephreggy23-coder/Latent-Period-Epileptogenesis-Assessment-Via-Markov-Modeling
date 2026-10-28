@@ -125,7 +125,6 @@ def transition_matrix_l1_distance(
             f"Transition matrices must have the same shape: "
             f"{P_a.shape} vs {P_b.shape}"
         )
-    K = P_a.shape[0]
     row_dists = np.sum(np.abs(P_a - P_b), axis=1)
     return float(np.mean(row_dists))
 
