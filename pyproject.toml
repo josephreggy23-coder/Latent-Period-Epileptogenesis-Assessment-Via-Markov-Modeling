@@ -45,6 +45,10 @@ dev = [
 [project.scripts]
 tbi-analyze = "tbi_markov.dataset:main"
 
+[project.urls]
+Repository = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling"
+Changelog = "https://github.com/josephreggy23-coder/Latent-Period-Epileptogenesis-Assessment-Via-Markov-Modeling/blob/main/CHANGELOG.md"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
