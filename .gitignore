@@ -27,3 +27,8 @@ venv/
 coverage.xml
 .tox/
 .env
+
+# Logs and editor swap files
+*.log
+*.swp
+desktop.ini
