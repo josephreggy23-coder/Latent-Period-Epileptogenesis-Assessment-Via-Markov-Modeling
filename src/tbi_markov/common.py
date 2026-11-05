@@ -307,6 +307,7 @@ def build_sequences(
 
 
 def concatenate_sequences(sequences: Iterable[np.ndarray]) -> tuple[np.ndarray, list[int]]:
+    """Stack per-fish sequences into one array and return it with each sequence's length."""
     sequences = [np.asarray(sequence, dtype=float) for sequence in sequences]
     if not sequences:
         raise ValueError("At least one sequence is required.")
