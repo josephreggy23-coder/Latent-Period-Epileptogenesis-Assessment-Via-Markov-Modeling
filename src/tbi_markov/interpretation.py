@@ -42,6 +42,7 @@ TWO_STATE_NAMES = {
 
 
 def state_names(n_states: int) -> dict[int, str]:
+    """Return the preregistered state-index-to-name mapping for a K=2 or K=3 model."""
     if n_states == 3:
         return dict(THREE_STATE_NAMES)
     if n_states == 2:
