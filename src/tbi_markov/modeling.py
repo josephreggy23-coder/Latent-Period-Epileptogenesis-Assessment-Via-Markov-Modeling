@@ -26,6 +26,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold
 
+from .baseline import fit_elastic_net_baseline
 from .common import (
     DOSE_INDEX,
     FALLING_FEATURES,
@@ -33,8 +34,8 @@ from .common import (
     GROUP_ORDER,
     GROUPS,
     OBSERVATION_DPF,
-    RESULTS_DIR,
     PREDICTION_CUTOFF_DPF,
+    RESULTS_DIR,
     RISING_FEATURES,
     SEED,
     TARGET,
@@ -45,7 +46,6 @@ from .common import (
     qc_sessions,
     severity_mapping,
 )
-from .baseline import fit_elastic_net_baseline
 from .dose_ordering import (
     covariate_adjusted_dose_ordering,
     decode_state_index,

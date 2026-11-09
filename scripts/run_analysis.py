@@ -6,6 +6,5 @@ HMM and scores the causal 4-5 dpf to 6 dpf forecast into `results/`.
 
 from tbi_markov.dataset import main
 
-
 if __name__ == "__main__":
     main()
