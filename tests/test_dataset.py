@@ -8,8 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import make_tables
+
 from tbi_markov.common import FEATURES, TARGET, validate_dataset
 from tbi_markov.dataset import (
     DEFAULT_BEHAVIOR_WORKBOOK,

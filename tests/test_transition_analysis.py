@@ -24,7 +24,6 @@ from tbi_markov.transition_analysis import (
     summarize_transitions,
 )
 
-
 # ---- Known transition matrices -----------------------------------------
 
 def _uniform_chain(K: int) -> np.ndarray:

@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 import pandas as pd
+from conftest import make_tables
 
 from tbi_markov.common import (
     FEATURES,
@@ -17,7 +18,6 @@ from tbi_markov.modeling import (
     propagate_ordered_probabilities,
     run_analysis,
 )
-from conftest import make_tables
 
 
 def test_fish_split_has_no_overlap_and_preserves_arms():

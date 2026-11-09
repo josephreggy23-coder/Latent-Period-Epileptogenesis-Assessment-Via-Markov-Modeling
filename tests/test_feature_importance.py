@@ -25,7 +25,6 @@ from tbi_markov.feature_importance import (
     permutation_importance,
 )
 
-
 # ------------------------------------------------------------------
 # Helpers: synthetic data with known structure
 # ------------------------------------------------------------------

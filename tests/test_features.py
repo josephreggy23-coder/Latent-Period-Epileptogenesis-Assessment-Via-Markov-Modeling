@@ -10,8 +10,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tbi_markov.common import FEATURES, LOG1P_FEATURES, NONNEGATIVE_LFP_FEATURES, transform_feature_values
-from tbi_markov.modeling import RISING_FEATURES, FALLING_FEATURES, severity_mapping
+from tbi_markov.common import (
+    FEATURES,
+    LOG1P_FEATURES,
+    NONNEGATIVE_LFP_FEATURES,
+    transform_feature_values,
+)
+from tbi_markov.modeling import FALLING_FEATURES, RISING_FEATURES, severity_mapping
 
 
 def test_feature_allowlist_is_exactly_the_preregistered_four_columns():

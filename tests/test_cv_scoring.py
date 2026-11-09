@@ -19,7 +19,6 @@ from tbi_markov.cv_scoring import (
     score_fold,
 )
 
-
 # ---- score_fold --------------------------------------------------------------
 
 class TestScoreFold:
